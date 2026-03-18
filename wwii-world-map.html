@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⚔️ Dünya Savaşı - Dünya Haritası</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#0a1520;
+  font-family:'Courier New',monospace;
+  color:#e8d5a0;
+  height:100vh;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
+#header {
+  background:linear-gradient(90deg,#1a0a00,#2a1500,#1a0a00);
+  border-bottom:2px solid #8b6914;
+  padding:8px 16px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:6px;
+  z-index:10;
+}
+#header h1 { font-size:16px; color:#f0c040; letter-spacing:3px; }
+.stats { display:flex; gap:8px; flex-wrap:wrap; font-size:11px; }
+.stat { padding:4px 10px; border-radius:4px; border:1px solid; }
+.stat.turn  { background:#1a2a1a; border-color:#2a5a2a; color:#80ff80; }
+.stat.gold  { background:#2a2a0a; border-color:#5a5a0a; color:#ffd700; }
+.stat.inc   { background:#0a1a2a; border-color:#0a3a5a; color:#4aafff; }
+.stat.phase { background:#2a0a0a; border-color:#5a0a0a; color:#ff8080; }
+.stat.phase.player { background:#0a2a0a; border-color:#0a5a0a; color:#80ff80; }
+
+#main { display:flex; flex:1; overflow:hidden; }
+
+#mapwrap {
+  flex:1;
+  position:relative;
+  overflow:hidden;
+}
+
+#worldsvg {
+  width:100%;
+  height:100%;
+  position:absolute;
+  top:0; left:0;
+}
+
+.country {
+  stroke:#0a2a0a;
+  stroke-width:0.6;
+  cursor:pointer;
+  transition:filter 0.15s, fill 0.2s;
+}
+.country:hover { filter:brightness(1.5); }
+.country.allies  { fill:#1e4a7a; }
+.country.axis    { fill:#7a1e1e; }
+.country.neutral { fill:#2a3a2a; }
+.country.selected { stroke:#ffd700; stroke-width:2.5; filter:brightness(1.7) drop-shadow(0 0 10px #ffd700); }
+.country.attackable { stroke:#ff6600; stroke-width:2; filter:brightness(1.4) drop-shadow(0 0 5px #ff6600); }
+.country.moveable { stroke:#00dd66; stroke-width:2; filter:brightness(1.3); }
+
+#markersvg {
+  position:absolute; top:0; left:0; width:100%; height:100%;
+  pointer-events:none;
+}
+
+#tooltip {
+  position:absolute;
+  background:rgba(5,5,2,0.95);
+  border:1px solid #8b6914;
+  border-radius:5px;
+  padding:7px 12px;
+  font-size:11px;
+  color:#e8d5a0;
+  pointer-events:none;
+  display:none;
+  z-index:50;
+  white-space:nowrap;
+  line-height:1.7;
+}
+
+#sidebar {
+  width:220px;
+  background:linear-gradient(180deg,#0f0a00,#1a1200);
+  border-left:2px solid #3a2a00;
+  display:flex; flex-direction:column;
+  overflow:hidden;
+  font-size:11px;
+}
+.sb-sec { padding:10px 12px; border-bottom:1px solid #3a2a00; }
+.sb-ti { font-size:9px; color:#8a6a20; letter-spacing:2px; margin-bottom:7px; }
+.leg-row { display:flex; align-items:center; gap:7px; margin-bottom:5px; color:#c8a860; }
+.ldot { width:9px;height:9px;border-radius:50%;flex-shrink:0; }
+#sel-name { font-size:13px; font-weight:bold; color:#ffd700; margin-bottom:4px; }
+#sel-detail { color:#c8a860; line-height:1.9; }
+.abtn {
+  width:100%; padding:7px; border-radius:4px; border:1px solid;
+  font-family:inherit; font-size:11px; letter-spacing:1px;
+  cursor:pointer; margin-top:6px;
+  background:linear-gradient(135deg,#2a4a00,#4a8a00); border-color:#4a8a00; color:#80ff80;
+}
+.abtn:disabled { background:#1a1a1a; border-color:#333; color:#555; cursor:not-allowed; }
+#endbtn {
+  width:100%; padding:9px; border-radius:5px; border:2px solid;
+  font-family:inherit; font-size:11px; letter-spacing:2px;
+  font-weight:bold; cursor:pointer;
+  background:linear-gradient(135deg,#4a2a00,#8b5a00); border-color:#ffd700; color:#ffd700;
+}
+#endbtn:disabled { background:#1a1a1a; border-color:#333; color:#555; cursor:not-allowed; }
+#logbox { flex:1; overflow-y:auto; }
+.le { font-size:10px; padding:3px 0; border-bottom:1px solid #2a2010; line-height:1.4; }
+.le.n { color:#e8d080; }
+.le.o { color:#6a5030; }
+#howto { padding:9px 12px; border-top:1px solid #3a2a00; font-size:9px; color:#5a4a20; line-height:1.8; }
+
+#gameover {
+  display:none; position:absolute; inset:0;
+  background:rgba(0,0,0,0.88);
+  flex-direction:column; align-items:center; justify-content:center;
+  z-index:200;
+}
+#gameover.show { display:flex; }
+.go-em { font-size:76px; margin-bottom:12px; }
+.go-ti { font-size:32px; font-weight:bold; letter-spacing:4px; }
+.go-su { font-size:13px; color:#aaa; margin-top:10px; text-align:center; }
+#restartbtn {
+  margin-top:22px; padding:11px 30px;
+  background:linear-gradient(135deg,#4a2a00,#8b5a00);
+  border:2px solid #ffd700; border-radius:6px;
+  color:#ffd700; font-size:15px; cursor:pointer;
+  letter-spacing:2px; font-family:inherit;
+}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div>
+    <h1>⚔️ DÜNYA SAVAŞI STRATEJİSİ</h1>
+    <div style="font-size:9px;color:#a08030;letter-spacing:2px">GERÇEK DÜNYA HARİTASI ÜZERİNDE SAVAŞ</div>
+  </div>
+  <div class="stats">
+    <div class="stat turn">📅 TUR: <strong id="s-turn">1</strong></div>
+    <div class="stat gold">💰 <strong id="s-gold">100</strong></div>
+    <div class="stat inc">📈 <strong id="s-inc">+0</strong></div>
+    <div class="stat phase player" id="s-phase">🟢 SENİN TURUN</div>
+  </div>
+</div>
+
+<div id="main">
+  <div id="mapwrap">
+    <svg id="worldsvg" viewBox="0 0 1009 665" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="ocean" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" style="stop-color:#0a1e32"/>
+          <stop offset="100%" style="stop-color:#050d18"/>
+        </linearGradient>
+      </defs>
+      <rect width="1009" height="665" fill="url(#ocean)"/>
+      <!-- grid -->
+      <g stroke="#0a1e2a" stroke-width="0.5" opacity="0.7">
+        <line x1="0" y1="166" x2="1009" y2="166"/>
+        <line x1="0" y1="332" x2="1009" y2="332"/>
+        <line x1="0" y1="498" x2="1009" y2="498"/>
+        <line x1="252" y1="0" x2="252" y2="665"/>
+        <line x1="504" y1="0" x2="504" y2="665"/>
+        <line x1="756" y1="0" x2="756" y2="665"/>
+      </g>
+
+      <!-- NORTH AMERICA -->
+      <!-- Canada -->
+      <path id="canada" class="country allies" d="M55,35 L260,30 L268,80 L240,95 L200,100 L150,98 L90,100 L58,80 Z"/>
+      <!-- USA -->
+      <path id="usa" class="country allies" d="M62,100 L238,96 L244,155 L225,170 L170,172 L100,170 L65,155 Z"/>
+      <!-- Alaska -->
+      <path id="alaska" class="country allies" d="M20,35 L55,30 L58,62 L40,70 L18,62 Z"/>
+      <!-- Mexico -->
+      <path id="mexico" class="country neutral" d="M68,170 L170,168 L175,205 L148,215 L85,212 L65,195 Z"/>
+      <!-- Cuba -->
+      <path id="cuba" class="country neutral" d="M175,178 L210,174 L214,188 L195,194 L172,190 Z"/>
+      <!-- C.America -->
+      <path id="camex" class="country neutral" d="M138,212 L178,208 L182,235 L155,238 L135,228 Z"/>
+      <!-- Greenland -->
+      <path id="greenland" class="country allies" d="M305,15 L385,10 L392,50 L365,65 L308,60 Z"/>
+      <!-- Colombia -->
+      <path id="colombia" class="country neutral" d="M148,235 L220,230 L225,275 L195,278 L145,270 Z"/>
+      <!-- Brazil -->
+      <path id="brazil" class="country allies" d="M175,268 L305,262 L312,368 L255,378 L175,370 L162,315 Z"/>
+      <!-- Argentina -->
+      <path id="argentina" class="country neutral" d="M172,368 L255,362 L260,445 L215,458 L170,445 L165,402 Z"/>
+
+      <!-- EUROPE -->
+      <!-- UK -->
+      <path id="uk" class="country allies" d="M418,88 L430,80 L436,85 L434,100 L428,106 L418,102 Z"/>
+      <!-- Ireland -->
+      <path id="ireland" class="country neutral" d="M408,88 L418,84 L418,98 L408,100 Z"/>
+      <!-- Norway -->
+      <path id="norway" class="country neutral" d="M444,52 L466,46 L472,60 L465,74 L452,78 L444,68 Z"/>
+      <!-- Sweden -->
+      <path id="sweden" class="country neutral" d="M465,46 L480,42 L485,58 L480,72 L466,74 L466,58 Z"/>
+      <!-- Finland -->
+      <path id="finland" class="country neutral" d="M480,40 L502,36 L508,52 L500,65 L480,65 L480,48 Z"/>
+      <!-- Denmark -->
+      <path id="denmark" class="country neutral" d="M452,76 L465,72 L468,82 L456,86 L452,82 Z"/>
+      <!-- Netherlands -->
+      <path id="netherlands" class="country neutral" d="M434,90 L448,88 L450,100 L436,102 Z"/>
+      <!-- Belgium -->
+      <path id="belgium" class="country neutral" d="M436,100 L450,98 L452,110 L438,112 Z"/>
+      <!-- France -->
+      <path id="france" class="country allies" d="M420,108 L452,105 L458,125 L448,136 L430,134 L418,124 Z"/>
+      <!-- Germany -->
+      <path id="germany" class="country axis" d="M448,80 L472,78 L478,100 L470,115 L452,112 L448,98 Z"/>
+      <!-- Switzerland -->
+      <path id="swiss" class="country neutral" d="M448,125 L462,122 L465,132 L450,135 Z"/>
+      <!-- Italy -->
+      <path id="italy" class="country axis" d="M448,134 L464,130 L468,150 L462,168 L452,162 L445,148 Z"/>
+      <!-- Spain -->
+      <path id="spain" class="country neutral" d="M408,118 L448,115 L450,132 L440,142 L418,140 L406,130 Z"/>
+      <!-- Portugal -->
+      <path id="portugal" class="country neutral" d="M396,118 L408,116 L410,136 L398,138 L392,128 Z"/>
+      <!-- Poland -->
+      <path id="poland" class="country axis" d="M472,78 L502,74 L508,92 L498,105 L478,104 L472,90 Z"/>
+      <!-- Czechoslovakia -->
+      <path id="czech" class="country axis" d="M468,104 L500,100 L505,112 L490,118 L466,115 Z"/>
+      <!-- Austria -->
+      <path id="austria" class="country axis" d="M450,115 L468,112 L472,124 L460,128 L448,125 Z"/>
+      <!-- Hungary -->
+      <path id="hungary" class="country neutral" d="M468,118 L500,115 L505,128 L490,134 L468,130 Z"/>
+      <!-- Romania -->
+      <path id="romania" class="country neutral" d="M498,100 L522,98 L528,118 L518,130 L500,128 L498,112 Z"/>
+      <!-- Yugoslavia -->
+      <path id="yugo" class="country neutral" d="M462,130 L490,126 L495,145 L480,150 L460,146 Z"/>
+      <!-- Bulgaria -->
+      <path id="bulgaria" class="country neutral" d="M492,130 L520,128 L524,145 L508,150 L490,146 Z"/>
+      <!-- Greece -->
+      <path id="greece" class="country neutral" d="M478,150 L508,146 L512,164 L498,170 L476,165 Z"/>
+      <!-- Albania -->
+      <path id="albania" class="country neutral" d="M462,146 L478,143 L480,157 L462,158 Z"/>
+
+      <!-- AFRICA -->
+      <!-- Morocco -->
+      <path id="morocco" class="country neutral" d="M396,140 L418,138 L422,168 L406,172 L394,158 Z"/>
+      <!-- Algeria -->
+      <path id="algeria" class="country neutral" d="M406,140 L450,138 L455,188 L432,194 L406,185 Z"/>
+      <!-- Libya -->
+      <path id="libya" class="country axis" d="M450,138 L510,135 L515,188 L465,195 L450,182 Z"/>
+      <!-- Egypt -->
+      <path id="egypt" class="country allies" d="M508,138 L548,135 L552,175 L525,180 L508,168 Z"/>
+      <!-- W.Africa -->
+      <path id="wafrica" class="country neutral" d="M394,188 L455,185 L458,238 L425,242 L392,232 Z"/>
+      <!-- Sudan -->
+      <path id="sudan" class="country neutral" d="M505,178 L548,175 L552,228 L525,235 L505,225 Z"/>
+      <!-- Ethiopia -->
+      <path id="ethiopia" class="country allies" d="M540,175 L582,172 L588,218 L558,225 L538,212 Z"/>
+      <!-- C.Africa -->
+      <path id="cafrica" class="country neutral" d="M452,238 L530,232 L535,278 L492,282 L450,275 Z"/>
+      <!-- S.Africa -->
+      <path id="safrica" class="country allies" d="M452,278 L535,275 L540,340 L495,352 L450,340 Z"/>
+
+      <!-- MIDDLE EAST & ASIA -->
+      <!-- Turkey -->
+      <path id="turkey" class="country neutral" d="M520,140 L572,135 L580,158 L560,168 L520,162 Z"/>
+      <!-- Syria/Iraq (Mideast) -->
+      <path id="mideast" class="country neutral" d="M550,160 L608,155 L615,188 L578,195 L548,185 Z"/>
+      <!-- Iran -->
+      <path id="iran" class="country neutral" d="M600,148 L650,142 L658,175 L638,188 L598,182 Z"/>
+      <!-- Arabia -->
+      <path id="arabia" class="country neutral" d="M548,185 L612,178 L620,228 L580,238 L545,228 Z"/>
+      <!-- Afghanistan -->
+      <path id="afghan" class="country neutral" d="M642,135 L678,130 L685,158 L658,165 L640,155 Z"/>
+      <!-- India -->
+      <path id="india" class="country allies" d="M668,158 L720,152 L728,205 L705,230 L675,232 L650,218 L645,180 Z"/>
+      <!-- USSR (large block) -->
+      <path id="ussr" class="country allies" d="M502,36 L750,30 L760,112 L740,160 L700,168 L660,158 L638,140 L602,148 L578,138 L522,140 L510,102 L505,55 Z"/>
+      <!-- China -->
+      <path id="china" class="country allies" d="M700,108 L788,102 L795,158 L772,175 L728,182 L700,168 L694,135 Z"/>
+      <!-- Japan -->
+      <path id="japan" class="country axis" d="M800,92 L820,85 L828,108 L818,122 L800,118 Z"/>
+      <!-- Korea -->
+      <path id="korea" class="country neutral" d="M786,110 L800,106 L802,122 L786,126 Z"/>
+      <!-- SE Asia -->
+      <path id="seasia" class="country neutral" d="M728,178 L785,172 L790,210 L758,218 L726,210 Z"/>
+      <!-- Indonesia -->
+      <path id="indonesia" class="country neutral" d="M748,218 L820,212 L828,248 L785,255 L745,248 Z"/>
+      <!-- Philippines -->
+      <path id="philippines" class="country neutral" d="M808,162 L825,158 L830,182 L812,188 Z"/>
+      <!-- Australia -->
+      <path id="australia" class="country allies" d="M775,278 L878,270 L885,358 L838,372 L778,365 L762,322 Z"/>
+      <!-- New Zealand -->
+      <path id="nz" class="country allies" d="M888,335 L906,328 L910,360 L895,366 L886,355 Z"/>
+    </svg>
+
+    <svg id="markersvg" viewBox="0 0 1009 665" preserveAspectRatio="xMidYMid meet"></svg>
+    <div id="tooltip"></div>
+
+    <div id="gameover">
+      <div class="go-em" id="go-em"></div>
+      <div class="go-ti" id="go-ti"></div>
+      <div class="go-su" id="go-su"></div>
+      <button id="restartbtn" onclick="restart()">🔄 YENİDEN BAŞLA</button>
+    </div>
+  </div>
+
+  <div id="sidebar">
+    <div class="sb-sec">
+      <div class="sb-ti">GÜÇLER</div>
+      <div class="leg-row"><div class="ldot" style="background:#2a6aaa"></div>🇺🇸 Müttefikler <span id="lg-allies" style="margin-left:auto;color:#4aafff"></span></div>
+      <div class="leg-row"><div class="ldot" style="background:#aa2a2a"></div>🇩🇪 Mihver <span id="lg-axis" style="margin-left:auto;color:#ff6a6a"></span></div>
+      <div class="leg-row"><div class="ldot" style="background:#3a4a3a"></div>🏳️ Tarafsız <span id="lg-neutral" style="margin-left:auto;color:#888"></span></div>
+    </div>
+
+    <div class="sb-sec" style="min-height:105px">
+      <div class="sb-ti">SEÇİLİ BÖLGE</div>
+      <div id="sel-content" style="color:#555;font-style:italic">Bir ülke seç...</div>
+    </div>
+
+    <div class="sb-sec">
+      <button id="endbtn" onclick="endTurn()">⏭ TURU BİTİR</button>
+    </div>
+
+    <div class="sb-sec" style="flex:1;overflow:hidden;display:flex;flex-direction:column">
+      <div class="sb-ti">SAVAŞ GÜNLÜĞÜ</div>
+      <div id="logbox"></div>
+    </div>
+
+    <div id="howto">
+      📖 <strong style="color:#7a6a30">NASIL OYNANIR:</strong><br>
+      • 🔵 Müttefik ülkeyi seç<br>
+      • 🟠 Komşu düşmana tıkla → Saldır<br>
+      • 🟢 Kendi ülkene tıkla → Asker taşı<br>
+      • Turu bitir → Gelir + AI hamlesi<br>
+      • 20💰 = +15 asker satın al
+    </div>
+  </div>
+</div>
+
+<script>
+const C = {
+  uk:         {name:"İngiltere",    cx:426, cy:94,  faction:"allies",  troops:100, income:18, conn:["norway","france","belgium","netherlands","canada","greenland","ireland"]},
+  ireland:    {name:"İrlanda",      cx:412, cy:93,  faction:"neutral", troops:18,  income:4,  conn:["uk"]},
+  norway:     {name:"Norveç",       cx:455, cy:63,  faction:"neutral", troops:28,  income:7,  conn:["uk","sweden","germany","denmark","finland"]},
+  sweden:     {name:"İsveç",        cx:474, cy:58,  faction:"neutral", troops:32,  income:8,  conn:["norway","finland","denmark","germany"]},
+  finland:    {name:"Finlandiya",   cx:493, cy:52,  faction:"neutral", troops:30,  income:6,  conn:["sweden","norway","ussr"]},
+  denmark:    {name:"Danimarka",    cx:459, cy:80,  faction:"neutral", troops:20,  income:6,  conn:["norway","sweden","germany","netherlands"]},
+  netherlands:{name:"Hollanda",     cx:442, cy:95,  faction:"neutral", troops:22,  income:7,  conn:["uk","germany","belgium","denmark"]},
+  belgium:    {name:"Belçika",      cx:443, cy:105, faction:"neutral", troops:20,  income:6,  conn:["france","germany","netherlands"]},
+  france:     {name:"Fransa",       cx:436, cy:120, faction:"allies",  troops:80,  income:15, conn:["uk","germany","italy","spain","swiss","belgium","netherlands"]},
+  germany:    {name:"Almanya",      cx:462, cy:96,  faction:"axis",    troops:130, income:22, conn:["france","poland","czech","austria","netherlands","belgium","denmark","norway","sweden","swiss"]},
+  swiss:      {name:"İsviçre",      cx:455, cy:128, faction:"neutral", troops:20,  income:6,  conn:["france","germany","austria","italy"]},
+  italy:      {name:"İtalya",       cx:455, cy:150, faction:"axis",    troops:75,  income:13, conn:["france","austria","greece","yugo","libya","swiss"]},
+  spain:      {name:"İspanya",      cx:426, cy:128, faction:"neutral", troops:45,  income:8,  conn:["france","portugal","morocco","algeria"]},
+  portugal:   {name:"Portekiz",     cx:400, cy:128, faction:"neutral", troops:22,  income:5,  conn:["spain","morocco"]},
+  poland:     {name:"Polonya",      cx:488, cy:90,  faction:"axis",    troops:65,  income:10, conn:["germany","ussr","czech","romania","hungary"]},
+  czech:      {name:"Çekoslovakya", cx:487, cy:108, faction:"axis",    troops:40,  income:8,  conn:["germany","poland","austria","hungary"]},
+  austria:    {name:"Avusturya",    cx:462, cy:120, faction:"axis",    troops:35,  income:7,  conn:["germany","italy","czech","hungary","yugo","swiss"]},
+  hungary:    {name:"Macaristan",   cx:486, cy:123, faction:"neutral", troops:35,  income:7,  conn:["austria","czech","poland","romania","yugo","bulgaria"]},
+  romania:    {name:"Romanya",      cx:511, cy:114, faction:"neutral", troops:40,  income:8,  conn:["poland","ussr","hungary","bulgaria","turkey"]},
+  yugo:       {name:"Yugoslavya",   cx:478, cy:140, faction:"neutral", troops:35,  income:7,  conn:["austria","hungary","bulgaria","greece","italy","albania"]},
+  albania:    {name:"Arnavutluk",   cx:469, cy:152, faction:"neutral", troops:15,  income:4,  conn:["yugo","greece","italy"]},
+  bulgaria:   {name:"Bulgaristan",  cx:506, cy:138, faction:"neutral", troops:30,  income:6,  conn:["romania","yugo","greece","turkey"]},
+  greece:     {name:"Yunanistan",   cx:494, cy:158, faction:"neutral", troops:35,  income:7,  conn:["yugo","albania","bulgaria","turkey","italy"]},
+  morocco:    {name:"Fas",          cx:403, cy:156, faction:"neutral", troops:28,  income:6,  conn:["spain","portugal","algeria"]},
+  algeria:    {name:"Cezayir",      cx:428, cy:164, faction:"neutral", troops:30,  income:6,  conn:["spain","morocco","libya","wafrica"]},
+  libya:      {name:"Libya",        cx:480, cy:162, faction:"axis",    troops:45,  income:7,  conn:["italy","egypt","algeria","mideast"]},
+  egypt:      {name:"Mısır",        cx:528, cy:157, faction:"allies",  troops:55,  income:10, conn:["libya","mideast","sudan","ethiopia","turkey"]},
+  wafrica:    {name:"Batı Afrika",  cx:423, cy:215, faction:"neutral", troops:22,  income:5,  conn:["algeria","morocco","sudan","cafrica"]},
+  sudan:      {name:"Sudan",        cx:526, cy:205, faction:"neutral", troops:25,  income:5,  conn:["egypt","ethiopia","cafrica","wafrica"]},
+  ethiopia:   {name:"Etiyopya",     cx:562, cy:198, faction:"allies",  troops:35,  income:7,  conn:["egypt","sudan","cafrica","arabia"]},
+  cafrica:    {name:"Orta Afrika",  cx:490, cy:258, faction:"neutral", troops:18,  income:4,  conn:["wafrica","sudan","ethiopia","safrica"]},
+  safrica:    {name:"G. Afrika",    cx:492, cy:312, faction:"allies",  troops:40,  income:8,  conn:["cafrica"]},
+  turkey:     {name:"Türkiye",      cx:548, cy:150, faction:"neutral", troops:52,  income:9,  conn:["bulgaria","greece","ussr","iran","mideast","egypt"]},
+  mideast:    {name:"Orta Doğu",    cx:580, cy:172, faction:"neutral", troops:30,  income:8,  conn:["turkey","iran","egypt","libya","arabia"]},
+  arabia:     {name:"Arabistan",    cx:580, cy:210, faction:"neutral", troops:28,  income:7,  conn:["mideast","iran","ethiopia"]},
+  iran:       {name:"İran",         cx:628, cy:163, faction:"neutral", troops:40,  income:8,  conn:["ussr","turkey","mideast","afghan","india"]},
+  afghan:     {name:"Afganistan",   cx:661, cy:147, faction:"neutral", troops:25,  income:5,  conn:["ussr","iran","india","china"]},
+  india:      {name:"Hindistan",    cx:686, cy:192, faction:"allies",  troops:85,  income:14, conn:["iran","afghan","china","seasia"]},
+  ussr:       {name:"Sovyetler",    cx:624, cy:95,  faction:"allies",  troops:160, income:25, conn:["finland","poland","romania","turkey","iran","afghan","china","korea","alaska"]},
+  china:      {name:"Çin",          cx:745, cy:138, faction:"allies",  troops:110, income:16, conn:["ussr","afghan","india","seasia","korea","japan"]},
+  japan:      {name:"Japonya",      cx:812, cy:103, faction:"axis",    troops:120, income:18, conn:["china","korea","philippines","seasia"]},
+  korea:      {name:"Kore",         cx:793, cy:117, faction:"neutral", troops:25,  income:5,  conn:["china","japan","ussr"]},
+  seasia:     {name:"G.D. Asya",    cx:756, cy:194, faction:"neutral", troops:40,  income:8,  conn:["china","india","japan","indonesia","philippines"]},
+  indonesia:  {name:"Endonezya",    cx:784, cy:232, faction:"neutral", troops:35,  income:7,  conn:["seasia","australia","philippines"]},
+  philippines:{name:"Filipinler",   cx:818, cy:175, faction:"neutral", troops:28,  income:6,  conn:["japan","seasia","indonesia"]},
+  australia:  {name:"Avustralya",   cx:828, cy:320, faction:"allies",  troops:70,  income:12, conn:["indonesia","nz"]},
+  nz:         {name:"Y. Zelanda",   cx:897, cy:348, faction:"allies",  troops:30,  income:6,  conn:["australia"]},
+  usa:        {name:"ABD",          cx:153, cy:133, faction:"allies",  troops:150, income:25, conn:["canada","mexico","cuba","uk","greenland"]},
+  canada:     {name:"Kanada",       cx:162, cy:65,  faction:"allies",  troops:90,  income:15, conn:["usa","alaska","uk","greenland"]},
+  alaska:     {name:"Alaska",       cx:36,  cy:52,  faction:"allies",  troops:35,  income:6,  conn:["canada","ussr"]},
+  greenland:  {name:"Grönland",     cx:348, cy:38,  faction:"allies",  troops:20,  income:4,  conn:["canada","uk","norway"]},
+  mexico:     {name:"Meksika",      cx:118, cy:190, faction:"neutral", troops:28,  income:5,  conn:["usa","camex","cuba"]},
+  cuba:       {name:"Küba",         cx:192, cy:186, faction:"neutral", troops:18,  income:4,  conn:["usa","mexico","camex"]},
+  camex:      {name:"Orta Amerika", cx:158, cy:222, faction:"neutral", troops:15,  income:4,  conn:["mexico","cuba","colombia"]},
+  colombia:   {name:"Kolombiya",    cx:185, cy:252, faction:"neutral", troops:22,  income:5,  conn:["camex","brazil"]},
+  brazil:     {name:"Brezilya",     cx:235, cy:318, faction:"allies",  troops:60,  income:10, conn:["colombia","argentina"]},
+  argentina:  {name:"Arjantin",     cx:212, cy:408, faction:"neutral", troops:30,  income:6,  conn:["brazil"]},
+};
+
+function isConn(a,b){ const ca=C[a],cb=C[b]; return (ca&&ca.conn.includes(b))||(cb&&cb.conn.includes(a)); }
+
+let selected=null, turn=1, gold=100, phase="player", gameOver=false;
+let logs=["⚔️ Savaş başladı! Müttefikler olarak oynuyorsun."];
+
+function income(){ return Object.values(C).filter(c=>c.faction==="allies").reduce((s,c)=>s+c.income,0); }
+function addLog(m){ logs.unshift(m); if(logs.length>15)logs.pop(); }
+
+function render(){
+  document.getElementById("s-turn").textContent=turn;
+  document.getElementById("s-gold").textContent=gold;
+  document.getElementById("s-inc").textContent="+"+income()+"/tur";
+  const ph=document.getElementById("s-phase");
+  if(phase==="player"){ph.textContent="🟢 SENİN TURUN";ph.className="stat phase player";}
+  else{ph.textContent="🔴 MİHVER OYNUYOR";ph.className="stat phase";}
+
+  document.getElementById("lg-allies").textContent=Object.values(C).filter(c=>c.faction==="allies").length+"🏴";
+  document.getElementById("lg-axis").textContent=Object.values(C).filter(c=>c.faction==="axis").length+"🏴";
+  document.getElementById("lg-neutral").textContent=Object.values(C).filter(c=>c.faction==="neutral").length+"🏴";
+
+  // Update country colors & classes
+  Object.entries(C).forEach(([id,c])=>{
+    const el=document.getElementById(id);
+    if(!el)return;
+    let cls="country "+c.faction;
+    if(id===selected) cls+=" selected";
+    else if(selected && isConn(selected,id)){
+      if(c.faction!=="allies") cls+=" attackable";
+      else cls+=" moveable";
+    }
+    el.setAttribute("class",cls);
+  });
+
+  // Markers
+  const ms=document.getElementById("markersvg");
+  ms.innerHTML="";
+  Object.entries(C).forEach(([id,c])=>{
+    const fc=c.faction==="allies"?"#1e5a9a":c.faction==="axis"?"#9a1e1e":"#2a3a2a";
+    const sc=c.faction==="allies"?"#4a9eff":c.faction==="axis"?"#ff4a4a":"#4a6a4a";
+    const g=document.createElementNS("http://www.w3.org/2000/svg","g");
+    const r=document.createElementNS("http://www.w3.org/2000/svg","rect");
+    r.setAttribute("x",c.cx-16); r.setAttribute("y",c.cy-9);
+    r.setAttribute("width",32); r.setAttribute("height",16);
+    r.setAttribute("rx",4); r.setAttribute("fill",fc);
+    r.setAttribute("stroke",id===selected?"#ffd700":sc);
+    r.setAttribute("stroke-width",id===selected?"1.5":"0.8");
+    r.setAttribute("opacity","0.93");
+    const t=document.createElementNS("http://www.w3.org/2000/svg","text");
+    t.setAttribute("x",c.cx); t.setAttribute("y",c.cy+4);
+    t.setAttribute("text-anchor","middle"); t.setAttribute("font-size","9");
+    t.setAttribute("font-family","Courier New"); t.setAttribute("fill","#fff");
+    t.setAttribute("font-weight","bold");
+    t.textContent="🪖"+c.troops;
+    g.appendChild(r); g.appendChild(t);
+    ms.appendChild(g);
+  });
+
+  // Sidebar
+  const sel=selected?C[selected]:null;
+  const sc=document.getElementById("sel-content");
+  if(sel){
+    const fe=sel.faction==="allies"?"🇺🇸":sel.faction==="axis"?"🇩🇪":"🏳️";
+    sc.innerHTML=`<div id="sel-name">${fe} ${sel.name}</div>
+      <div id="sel-detail">🪖 Asker: ${sel.troops}<br>💰 Gelir: +${sel.income}/tur</div>
+      ${sel.faction==="allies"?`<button class="abtn" onclick="buyTroops('${selected}')" ${gold<20?"disabled":""}>🪖 +15 ASKER (20💰)</button>`:""}`;
+  } else {
+    sc.innerHTML='<span style="color:#555;font-style:italic">Bir ülke seç...</span>';
+  }
+
+  document.getElementById("logbox").innerHTML=logs.map((l,i)=>`<div class="le ${i===0?"n":"o"}">${l}</div>`).join("");
+
+  const eb=document.getElementById("endbtn");
+  eb.disabled=phase!=="player"||gameOver;
+  eb.textContent=phase==="player"?"⏭ TURU BİTİR":"⏳ BEKLİYOR...";
+}
+
+document.getElementById("worldsvg").addEventListener("click",e=>{
+  const p=e.target.closest(".country");
+  if(!p||!p.id||!C[p.id])return;
+  handleClick(p.id);
+});
+
+document.getElementById("worldsvg").addEventListener("mousemove",e=>{
+  const p=e.target.closest(".country");
+  const tt=document.getElementById("tooltip");
+  if(p&&p.id&&C[p.id]){
+    const c=C[p.id];
+    const f=c.faction==="allies"?"🇺🇸 Müttefik":c.faction==="axis"?"🇩🇪 Mihver":"🏳️ Tarafsız";
+    tt.innerHTML=`<strong>${c.name}</strong><br>🪖 ${c.troops} asker &nbsp; 💰 +${c.income}/tur<br>${f}`;
+    tt.style.display="block";
+    const rect=document.getElementById("mapwrap").getBoundingClientRect();
+    tt.style.left=(e.clientX-rect.left+14)+"px";
+    tt.style.top=(e.clientY-rect.top+14)+"px";
+  } else tt.style.display="none";
+});
+document.getElementById("worldsvg").addEventListener("mouseleave",()=>document.getElementById("tooltip").style.display="none");
+
+function handleClick(id){
+  if(phase!=="player"||gameOver)return;
+  const c=C[id];
+  if(!selected){
+    if(c.faction==="allies"){selected=id;render();}
+    return;
+  }
+  if(selected===id){selected=null;render();return;}
+  const src=C[selected];
+  if(!isConn(selected,id)){addLog("❌ "+src.name+" → "+c.name+": Sınır yok!");selected=null;render();return;}
+  if(c.faction==="allies"){
+    if(src.troops<=12){addLog("⚠️ Yeterli asker yok!");selected=null;render();return;}
+    const mv=Math.floor(src.troops/2);
+    src.troops-=mv; c.troops+=mv;
+    addLog("🚶 "+src.name+" → "+c.name+": "+mv+" asker taşındı.");
+  } else {
+    if(src.troops<=12){addLog("⚠️ Saldırmak için yeterli asker yok!");selected=null;render();return;}
+    doAttack(selected,id,"allies");
+  }
+  selected=null; checkWin(); render();
+}
+
+function doAttack(sId,tId,af){
+  const s=C[sId],t=C[tId];
+  const ap=Math.floor(s.troops*0.72*(Math.random()*0.4+0.82));
+  const dp=Math.floor(t.troops*0.62*(Math.random()*0.4+0.82));
+  const wins=ap>dp;
+  s.troops=Math.max(1,s.troops-Math.floor(Math.min(s.troops-1,dp*0.45))-(wins?Math.floor(s.troops*0.28):0));
+  if(wins){
+    t.faction=af; t.troops=Math.max(5,Math.floor(s.troops*0.38));
+    addLog((af==="allies"?"🔵":"🔴")+" "+s.name+" → "+t.name+" FETHEDİLDİ!");
+  } else {
+    t.troops=Math.max(1,t.troops-Math.floor(Math.min(t.troops,ap*0.6)));
+    addLog("💥 "+s.name+" → "+t.name+" saldırısı püskürtüldü!");
+  }
+}
+
+function endTurn(){
+  if(phase!=="player"||gameOver)return;
+  const inc=income(); gold+=inc;
+  addLog("💰 Tur "+turn+": +"+inc+" altın. Toplam: "+gold);
+  phase="ai"; render();
+  setTimeout(aiTurn,1200);
+}
+
+function aiTurn(){
+  const axList=Object.entries(C).filter(([,c])=>c.faction==="axis"&&c.troops>18).sort(()=>Math.random()-0.5);
+  let hit=false;
+  for(const [sId,s] of axList){
+    const tgts=s.conn.filter(tid=>C[tid]&&C[tid].faction!=="axis"&&s.troops>C[tid].troops*0.65);
+    if(tgts.length){doAttack(sId,tgts[Math.floor(Math.random()*tgts.length)],"axis");hit=true;break;}
+  }
+  if(!hit)addLog("🤖 Mihver savunma hattını güçlendirdi.");
+  Object.values(C).forEach(c=>{
+    if(c.faction==="axis")c.troops+=Math.floor(c.income*0.85);
+    if(c.faction==="allies")c.troops+=Math.floor(c.income*0.55);
+    if(c.faction==="neutral")c.troops+=Math.floor(c.income*0.3);
+  });
+  turn++; phase="player"; checkWin(); render();
+}
+
+function buyTroops(id){
+  if(gold<20){addLog("⚠️ Yeterli altın yok!");return;}
+  C[id].troops+=15; gold-=20;
+  addLog("🪖 "+C[id].name+"'a 15 asker eklendi.");
+  render();
+}
+
+function checkWin(){
+  if(Object.values(C).filter(c=>c.faction==="axis").length===0)showGO("win");
+  else if(Object.values(C).filter(c=>c.faction==="allies").length===0)showGO("lose");
+}
+
+function showGO(r){
+  gameOver=true; phase="over";
+  document.getElementById("go-em").textContent=r==="win"?"🏆":"💀";
+  const ti=document.getElementById("go-ti");
+  ti.textContent=r==="win"?"ZAFER!":"YENİLGİ!";
+  ti.style.color=r==="win"?"#ffd700":"#ff4444";
+  ti.style.textShadow="0 0 30px "+(r==="win"?"#ffd700":"#ff0000");
+  document.getElementById("go-su").textContent=r==="win"
+    ?"Mihver kuvvetlerini yeniltin! Tarihe geçtiniz."
+    :"Tüm müttefik topraklar düştü. Savaş kaybedildi.";
+  document.getElementById("gameover").classList.add("show");
+}
+
+const INIT_STATE={};
+Object.entries(C).forEach(([id,c])=>INIT_STATE[id]={faction:c.faction,troops:c.troops});
+
+function restart(){
+  Object.entries(INIT_STATE).forEach(([id,s])=>{C[id].faction=s.faction;C[id].troops=s.troops;});
+  selected=null;turn=1;gold=100;phase="player";gameOver=false;
+  logs=["⚔️ Yeni savaş başladı! Müttefikler olarak oynuyorsun."];
+  document.getElementById("gameover").classList.remove("show");
+  render();
+}
+
+render();
+</script>
+</body>
+</html>
