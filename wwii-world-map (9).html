@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>⚔️ WWII Grand Strategy</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#3d7aaa;font-family:'Courier New',monospace;color:#1a0f00;height:100vh;overflow:hidden;display:flex;flex-direction:column;user-select:none;}
+
+/* SPLASH / LOADING */
+#splash{position:fixed;inset:0;background:#080500;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;gap:18px;}
+#splash h1{font-size:22px;color:#f0c040;letter-spacing:4px;}
+#splash .sub{font-size:11px;color:#7a5a18;letter-spacing:2px;}
+.spin{width:46px;height:46px;border:3px solid #1a1200;border-top:3px solid #ffd700;border-radius:50%;animation:spin 0.8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+#splash-msg{font-size:12px;color:#8a6a20;letter-spacing:1px;}
+#dl-bar-wrap{width:280px;height:8px;background:#1a1200;border-radius:4px;overflow:hidden;display:none;}
+#dl-bar{height:100%;background:#ffd700;border-radius:4px;transition:width 0.3s;width:0%;}
+#offline-note{font-size:10px;color:#4a3808;max-width:320px;text-align:center;line-height:1.7;display:none;}
+#splash-err{font-size:11px;color:#ff6060;max-width:320px;text-align:center;line-height:1.7;display:none;}
+
+/* PICKER */
+#picker{position:fixed;inset:0;background:rgba(8,4,0,0.97);display:none;flex-direction:column;align-items:center;z-index:8000;overflow-y:auto;padding:22px 14px;}
+#picker h2{font-size:19px;color:#f0c040;letter-spacing:4px;margin-bottom:3px;}
+.psub{font-size:10px;color:#7a5a18;letter-spacing:2px;margin-bottom:14px;}
+#picker input{background:#0f0800;border:1px solid #5a4000;color:#e8d5a0;padding:7px 12px;border-radius:4px;font-family:inherit;font-size:11px;width:280px;outline:none;margin-bottom:12px;}
+#picker input:focus{border-color:#ffd700;}
+#cGrid{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:900px;}
+.pc{background:#130900;border:2px solid #2a1500;border-radius:6px;padding:8px 11px;cursor:pointer;transition:all 0.12s;width:158px;}
+.pc:hover{transform:translateY(-2px);background:#1e1200;}
+.pf{font-size:17px;}.pn{font-size:11px;font-weight:bold;color:#f0c040;margin-top:2px;}
+.pa{font-size:9px;margin-top:1px;}.ps{font-size:8px;color:#6a4a18;margin-top:3px;line-height:1.6;}
+
+/* HEADER */
+#hdr{background:linear-gradient(90deg,#180800,#281200,#180800);border-bottom:2px solid #8b6914;padding:6px 12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px;flex-shrink:0;}
+#hdr h1{font-size:13px;color:#f0c040;letter-spacing:2px;}
+.sts{display:flex;gap:5px;flex-wrap:wrap;font-size:10px;}
+.st{padding:3px 7px;border-radius:3px;border:1px solid;}
+.st-t{background:#142214;border-color:#285028;color:#88ff88;}
+.st-g{background:#221a08;border-color:#584808;color:#ffd700;}
+.st-p{background:#081422;border-color:#083858;color:#5aafff;}
+.st-r{background:#140822;border-color:#380858;color:#cc88ff;}
+.st-ph{background:#220808;border-color:#580808;color:#ff8888;}
+.st-ph.on{background:#082208;border-color:#085808;color:#88ff88;}
+.hbtn{padding:3px 9px;border-radius:3px;border:1px solid #5a4000;background:#160e00;color:#ffd700;cursor:pointer;font-family:inherit;font-size:9px;}
+.hbtn:hover{background:#241800;border-color:#ffd700;}
+.hbtn.act{background:#1a3800;border-color:#00ff88;color:#00ff88;}
+
+/* MAIN */
+#main{display:flex;flex:1;overflow:hidden;}
+#mapwrap{flex:1;position:relative;overflow:hidden;background:#3d7aaa;}
+#mapsvg{position:absolute;top:0;left:0;width:100%;height:100%;}
+
+/* Countries via D3 */
+.land{stroke:#111;stroke-width:0.5;cursor:pointer;transition:filter 0.1s;}
+.land:hover{filter:brightness(1.2);}
+.land.SEL{stroke:#ffd700!important;stroke-width:2.5!important;filter:brightness(1.35) drop-shadow(0 0 6px #ffd700)!important;}
+.land.ATK{stroke:#ff6600!important;stroke-width:2!important;filter:brightness(1.25) drop-shadow(0 0 4px #ff6600)!important;}
+.land.MOV{stroke:#00dd66!important;stroke-width:2!important;filter:brightness(1.2)!important;}
+.land.MINE{stroke:#fff!important;stroke-width:1.8!important;}
+.graticule{fill:none;stroke:#2a6090;stroke-width:0.4;opacity:0.5;}
+.sphere{fill:#3d7aaa;}
+
+/* Zoom */
+#zc{position:absolute;bottom:12px;left:12px;z-index:30;display:flex;flex-direction:column;gap:3px;}
+.zb{width:30px;height:30px;background:rgba(18,10,0,0.88);border:1px solid #8b6914;color:#ffd700;font-size:17px;cursor:pointer;border-radius:4px;display:flex;align-items:center;justify-content:center;}
+.zb:hover{background:rgba(36,22,0,0.9);}
+#zlbl{position:absolute;bottom:12px;left:46px;z-index:30;background:rgba(5,3,0,0.82);border:1px solid #3a2800;color:#7a5a18;font-size:9px;padding:2px 7px;border-radius:3px;pointer-events:none;}
+
+/* Tooltip */
+#tt{position:absolute;background:rgba(2,2,0,0.97);border:1px solid #8b6914;border-radius:5px;padding:7px 11px;font-size:10px;color:#e8d5a0;pointer-events:none;display:none;z-index:200;line-height:1.9;box-shadow:0 3px 16px rgba(0,0,0,0.85);max-width:255px;}
+
+/* SIDEBAR */
+#sb{width:232px;background:linear-gradient(180deg,#0e0700,#170c00);border-left:2px solid #3a2800;display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;}
+.sbs{padding:8px 10px;border-bottom:1px solid #3a2800;font-size:10px;}
+.sbt{font-size:8px;color:#8a6a20;letter-spacing:2px;margin-bottom:5px;}
+.lr{display:flex;align-items:center;gap:5px;margin-bottom:3px;color:#c8a860;}
+.ld{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.abtn{width:100%;padding:5px 7px;border-radius:3px;border:1px solid #3a6a00;font-family:inherit;font-size:9px;cursor:pointer;margin-top:4px;background:#111e00;color:#90ff70;text-align:left;line-height:1.6;}
+.abtn:disabled{background:#0a0a0a;border-color:#222;color:#333;cursor:not-allowed;}
+.abtn b{display:block;color:#c0ff90;}
+.abtn span{font-size:8px;color:#4a7a20;opacity:0.9;}
+#cp{background:#180800;border:1px solid #4a3000;border-radius:4px;padding:7px;margin-top:6px;font-size:9px;display:none;}
+#cp .cpt{color:#ffd700;font-weight:bold;margin-bottom:4px;}
+.cpr{display:flex;justify-content:space-between;color:#c8a860;margin-bottom:2px;}
+.cpbw{height:5px;background:#1a1500;border-radius:3px;margin:4px 0;}
+.cpb{height:100%;border-radius:3px;}
+#endbtn{width:100%;padding:7px;border-radius:4px;border:2px solid #ffd700;font-family:inherit;font-size:10px;letter-spacing:2px;font-weight:bold;cursor:pointer;background:linear-gradient(135deg,#3a1e00,#6b4000);color:#ffd700;}
+#endbtn:disabled{background:#0a0a0a;border-color:#222;color:#333;cursor:not-allowed;}
+#logbox{flex:1;overflow-y:auto;}
+.le{font-size:9px;padding:2px 0;border-bottom:1px solid #281800;line-height:1.4;}
+.le.n{color:#e8d080;}.le.o{color:#5a3808;}
+#howto{padding:6px 10px;border-top:1px solid #3a2800;font-size:8px;color:#4a3010;line-height:1.9;}
+
+/* Alliance legend */
+#aleg{position:absolute;top:8px;left:8px;z-index:40;background:rgba(3,2,0,0.94);border:1px solid #5a4000;border-radius:4px;padding:8px 11px;display:none;}
+#aleg.show{display:block;}
+.alr{display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:9px;color:#c8a860;}
+.ald{width:11px;height:11px;border-radius:2px;}
+
+/* Tech modal */
+#techmod{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:500;align-items:center;justify-content:center;}
+#techmod.show{display:flex;}
+#techbox{background:#0e0700;border:2px solid #5a4000;border-radius:8px;padding:16px;width:490px;max-height:80vh;overflow-y:auto;}
+#techbox h3{color:#f0c040;font-size:13px;letter-spacing:3px;margin-bottom:10px;}
+.ti{background:#170d00;border:1px solid #3a2200;border-radius:4px;padding:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.ti-n{font-size:10px;color:#e8d5a0;font-weight:bold;}
+.ti-d{font-size:9px;color:#6a4a18;margin-top:2px;}
+.ti-e{font-size:9px;color:#4a8800;margin-top:1px;font-style:italic;}
+.tbtn{padding:4px 9px;border-radius:3px;border:1px solid #8b6914;background:#1c0d00;color:#ffd700;cursor:pointer;font-family:inherit;font-size:9px;white-space:nowrap;}
+.tbtn:disabled{border-color:#222;background:#080808;color:#2a2a2a;cursor:not-allowed;}
+.cbtn{float:right;background:none;border:1px solid #4a0000;color:#ff5555;padding:3px 8px;border-radius:3px;cursor:pointer;font-family:inherit;font-size:10px;}
+
+/* Game over */
+#go{display:none;position:absolute;inset:0;background:rgba(0,0,0,0.93);flex-direction:column;align-items:center;justify-content:center;z-index:300;}
+#go.show{display:flex;}
+.gem{font-size:62px;margin-bottom:8px;}.gti{font-size:25px;font-weight:bold;letter-spacing:4px;}
+.gsu{font-size:11px;color:#aaa;margin-top:8px;text-align:center;max-width:360px;line-height:1.7;}
+#grb{margin-top:16px;padding:9px 24px;background:linear-gradient(135deg,#3a1e00,#6b4000);border:2px solid #ffd700;border-radius:5px;color:#ffd700;font-size:13px;cursor:pointer;letter-spacing:2px;font-family:inherit;}
+</style>
+</head>
+<body>
+
+<!-- SPLASH -->
+<div id="splash">
+  <h1>⚔️ WWII GRAND STRATEGY</h1>
+  <div class="sub">1939–1945</div>
+  <div class="spin"></div>
+  <div id="splash-msg">Harita yükleniyor...</div>
+  <div id="dl-bar-wrap"><div id="dl-bar"></div></div>
+  <div id="offline-note">📦 İlk açılış: harita verisi indiriliyor ve kaydediliyor.<br>Sonraki açılışlarda internet gerekmeyecek.</div>
+  <div id="splash-err"></div>
+</div>
+
+<!-- PICKER -->
+<div id="picker">
+  <h2>⚔️ WWII GRAND STRATEGY</h2>
+  <div class="psub">1939 · HANGİ ÜLKEYLE SAVAŞACAKSIN?</div>
+  <input id="srch" placeholder="🔍 Ülke ara..." oninput="filterCards()">
+  <div id="cGrid"></div>
+</div>
+
+<!-- HEADER -->
+<div id="hdr">
+  <div>
+    <h1>⚔️ WWII GRAND STRATEGY <span id="pflag"></span></h1>
+    <div style="font-size:8px;color:#a08030;letter-spacing:2px" id="plbl">1939–1945</div>
+  </div>
+  <div class="sts">
+    <div class="st st-t">📅 <b id="s-tur">1</b></div>
+    <div class="st st-g">💰 <b id="s-gld">0</b></div>
+    <div class="st st-p">🏭 <b id="s-prd">0</b>/tur</div>
+    <div class="st st-r">🔬 <b id="s-res">0</b></div>
+    <div class="st st-ph on" id="s-ph">🟢 SENİN TURUN</div>
+  </div>
+  <div style="display:flex;gap:5px;flex-wrap:wrap;">
+    <button class="hbtn" id="abtn" onclick="togAlliance()">🤝 İTTİFAKLAR</button>
+    <button class="hbtn" onclick="openTech()">🔬 TEKNOLOJİ</button>
+    <button class="hbtn" onclick="showPicker()">🌍 DEĞİŞTİR</button>
+  </div>
+</div>
+
+<div id="main">
+  <div id="mapwrap">
+    <svg id="mapsvg"></svg>
+
+    <div id="aleg">
+      <div style="font-size:8px;color:#8a6a20;letter-spacing:2px;margin-bottom:7px;">İTTİFAK GÖRÜNÜMÜ</div>
+      <div class="alr"><div class="ald" style="background:#4488cc"></div>Müttefikler</div>
+      <div class="alr"><div class="ald" style="background:#cc4444"></div>Mihver</div>
+      <div class="alr"><div class="ald" style="background:#556655"></div>Tarafsız</div>
+      <div style="font-size:8px;color:#3a2a08;margin-top:5px;">Tekrar bas → normal</div>
+    </div>
+
+    <div id="tt"></div>
+    <div id="zc">
+      <button class="zb" onclick="doZoom(1.3)">+</button>
+      <button class="zb" onclick="doZoom(0.77)">−</button>
+      <button class="zb" onclick="resetZoom()" style="font-size:11px">⌂</button>
+    </div>
+    <div id="zlbl">Tekerlek: zoom · Sürükle: kaydır</div>
+
+    <div id="go">
+      <div class="gem" id="gem"></div>
+      <div class="gti" id="gti"></div>
+      <div class="gsu" id="gsu"></div>
+      <button id="grb" onclick="showPicker()">🔄 YENİDEN BAŞLA</button>
+    </div>
+  </div>
+
+  <div id="sb">
+    <div class="sbs">
+      <div class="sbt">İTTİFAK DURUMU</div>
+      <div class="lr"><div class="ld" style="background:#4488cc"></div>🔵 Müttefikler <span id="lga" style="margin-left:auto;color:#4aafff"></span></div>
+      <div class="lr"><div class="ld" style="background:#cc4444"></div>🔴 Mihver <span id="lgx" style="margin-left:auto;color:#ff6a6a"></span></div>
+      <div class="lr"><div class="ld" style="background:#556655"></div>⚪ Tarafsız <span id="lgn" style="margin-left:auto;color:#888"></span></div>
+    </div>
+    <div class="sbs" style="min-height:200px;">
+      <div class="sbt">SEÇİLİ BÖLGE</div>
+      <div id="sc" style="color:#333;font-style:italic;font-size:9px;">Bir ülkeye tıkla...</div>
+      <div id="ap"></div>
+      <div id="cp"></div>
+    </div>
+    <div class="sbs"><button id="endbtn" onclick="endTurn()">⏭ TURU BİTİR</button></div>
+    <div class="sbs" style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
+      <div class="sbt">SAVAŞ GÜNLÜĞÜ</div>
+      <div id="logbox"></div>
+    </div>
+    <div id="howto">
+      📖 <b style="color:#6a4818">NASIL OYNANIR</b><br>
+      • Kendi ülkeni seç (beyaz kenarlık)<br>
+      • 🟠 Komşu düşmana tıkla → SALDIRI<br>
+      • 🟢 Kendi komşuna tıkla → TAŞI<br>
+      🏭 Fabrika: +3 asker/tur kalıcı<br>
+      🌾 Çiftlik: +5💰/tur kalıcı + moral<br>
+      ⏭ Turu bitir → gelir + üretim
+    </div>
+  </div>
+</div>
+
+<div id="techmod">
+  <div id="techbox">
+    <button class="cbtn" onclick="document.getElementById('techmod').classList.remove('show')">✕ KAPAT</button>
+    <h3>🔬 TEKNOLOJİ AĞACI</h3>
+    <div id="tcc"></div>
+  </div>
+</div>
+
+<!-- Load D3 and TopoJSON from CDN, cache everything locally -->
+<script>
+"use strict";
+
+// ─── CACHE KEYS ───────────────────────────────────────────
+const CACHE_D3      = 'wwii_d3_v7';
+const CACHE_TOPO    = 'wwii_topojson_v3';
+const CACHE_WORLD   = 'wwii_world_110m';
+
+function setMsg(m){ document.getElementById('splash-msg').textContent = m; }
+function setBar(pct){ 
+  document.getElementById('dl-bar-wrap').style.display='block';
+  document.getElementById('dl-bar').style.width = pct+'%'; 
+}
+
+async function loadScript(src){
+  return new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src=src; s.onload=res; s.onerror=rej;
+    document.head.appendChild(s);
+  });
+}
+
+async function fetchAndCache(url, cacheKey){
+  // Try localStorage first
+  try {
+    const cached = localStorage.getItem(cacheKey);
+    if(cached && cached.length > 100) return cached;
+  } catch(e){}
+  
+  // Fetch from network
+  const r = await fetch(url);
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const text = await r.text();
+  
+  // Try to cache
+  try { localStorage.setItem(cacheKey, text); } catch(e){ /* storage full, ignore */ }
+  return text;
+}
+
+async function loadFromCacheOrCDN(url, cacheKey){
+  try {
+    const cached = localStorage.getItem(cacheKey);
+    if(cached && cached.length > 100) return cached;
+  } catch(e){}
+  return null; // Will need network
+}
+
+async function bootstrap(){
+  const splashErr = document.getElementById('splash-err');
+  const offlineNote = document.getElementById('offline-note');
+
+  // Step 1: Load D3
+  setMsg('D3.js yükleniyor...'); setBar(10);
+  try {
+    // Check if D3 is cached as script
+    const cachedD3 = localStorage.getItem(CACHE_D3);
+    if(cachedD3 && cachedD3.length > 1000){
+      const blob = new Blob([cachedD3], {type:'application/javascript'});
+      await loadScript(URL.createObjectURL(blob));
+    } else {
+      offlineNote.style.display='block';
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js');
+      // Cache D3 source
+      try {
+        const src = await fetch('https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js').then(r=>r.text());
+        localStorage.setItem(CACHE_D3, src);
+      } catch(e){}
+    }
+  } catch(e){
+    splashErr.style.display='block';
+    splashErr.textContent='❌ D3.js yüklenemedi. İnternet bağlantısını kontrol et. Sonraki açılışlarda çevrimdışı çalışacak.';
+    return;
+  }
+  setBar(35);
+
+  // Step 2: Load TopoJSON
+  setMsg('TopoJSON yükleniyor...'); 
+  try {
+    const cachedTopo = localStorage.getItem(CACHE_TOPO);
+    if(cachedTopo && cachedTopo.length > 1000){
+      const blob = new Blob([cachedTopo], {type:'application/javascript'});
+      await loadScript(URL.createObjectURL(blob));
+    } else {
+      await loadScript('https://cdn.jsdelivr.net/npm/topojson@3/dist/topojson.min.js');
+      try {
+        const src = await fetch('https://cdn.jsdelivr.net/npm/topojson@3/dist/topojson.min.js').then(r=>r.text());
+        localStorage.setItem(CACHE_TOPO, src);
+      } catch(e){}
+    }
+  } catch(e){
+    splashErr.style.display='block';
+    splashErr.textContent='❌ TopoJSON yüklenemedi.';
+    return;
+  }
+  setBar(60);
+
+  // Step 3: Load World Data
+  setMsg('Dünya haritası verisi yükleniyor...');
+  let worldData;
+  try {
+    const cachedWorld = localStorage.getItem(CACHE_WORLD);
+    if(cachedWorld && cachedWorld.length > 1000){
+      worldData = JSON.parse(cachedWorld);
+    } else {
+      const txt = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(r=>r.text());
+      localStorage.setItem(CACHE_WORLD, txt);
+      worldData = JSON.parse(txt);
+    }
+  } catch(e){
+    splashErr.style.display='block';
+    splashErr.textContent='❌ Harita verisi yüklenemedi. İnternet bağlantısı gerekli (sadece ilk açılışta).';
+    return;
+  }
+  setBar(90);
+
+  setMsg('Oyun başlatılıyor...');
+  offlineNote.style.display='none';
+  
+  // Check if cached
+  const wasCached = localStorage.getItem(CACHE_WORLD) !== null;
+  if(wasCached){
+    // Show offline status
+  }
+
+  setTimeout(()=>{
+    document.getElementById('splash').style.display='none';
+    initGame(worldData);
+  }, 300);
+}
+
+bootstrap();
+</script>
+
+<script>
+"use strict";
+// ═══════════════════════════════════════════════════════
+//  TERRITORY DATA
+// ═══════════════════════════════════════════════════════
+const T={
+  usa:       {n:"ABD",              f:"🇺🇸",c:"#6688cc",al:"allies", tr:155,g:180,p:8, r:6,fac:5,frm:4,mor:90,conn:["canada","mexico","cuba","uk","greenland"]},
+  canada:    {n:"Kanada",           f:"🇨🇦",c:"#cc8888",al:"allies", tr:90, g:110,p:5, r:4,fac:3,frm:3,mor:85,conn:["usa","alaska","uk","greenland"]},
+  uk:        {n:"İngiltere",        f:"🇬🇧",c:"#4466aa",al:"allies", tr:108,g:140,p:7, r:7,fac:4,frm:2,mor:88,conn:["ireland","norway","france","belgium","netherlands","canada","greenland","iceland"]},
+  france:    {n:"Fransa",           f:"🇫🇷",c:"#8899cc",al:"allies", tr:82, g:120,p:6, r:5,fac:4,frm:3,mor:75,conn:["uk","germany","italy","spain","swiss","belgium","netherlands"]},
+  ussr:      {n:"Sovyetler",        f:"🇷🇺",c:"#ddaa44",al:"allies", tr:165,g:150,p:9, r:5,fac:6,frm:5,mor:80,conn:["finland","poland","romania","turkey","iran","afghan","china","mongolia","alaska","baltics"]},
+  india:     {n:"Hindistan",        f:"🇮🇳",c:"#ee9944",al:"allies", tr:88, g:90, p:5, r:3,fac:3,frm:5,mor:70,conn:["iran","afghan","china","burma","ceylon"]},
+  china:     {n:"Çin",              f:"🇨🇳",c:"#dd5544",al:"allies", tr:115,g:80, p:5, r:3,fac:3,frm:6,mor:72,conn:["ussr","afghan","india","burma","seasia","korea","mongolia","manchuria"]},
+  australia: {n:"Avustralya",       f:"🇦🇺",c:"#55bb88",al:"allies", tr:72, g:100,p:4, r:4,fac:2,frm:4,mor:85,conn:["indonesia","nz","papua"]},
+  nz:        {n:"Yeni Zelanda",     f:"🇳🇿",c:"#44aadd",al:"allies", tr:30, g:65, p:3, r:3,fac:1,frm:3,mor:85,conn:["australia"]},
+  safrica:   {n:"G. Afrika",        f:"🇿🇦",c:"#77bb66",al:"allies", tr:42, g:85, p:3, r:2,fac:2,frm:3,mor:75,conn:["angola","mozambique","eafrica"]},
+  brazil:    {n:"Brezilya",         f:"🇧🇷",c:"#66bb55",al:"allies", tr:60, g:75, p:4, r:2,fac:2,frm:5,mor:70,conn:["colombia","argentina","peru"]},
+  egypt:     {n:"Mısır",            f:"🇪🇬",c:"#ccaa55",al:"allies", tr:58, g:75, p:3, r:2,fac:2,frm:3,mor:72,conn:["libya","syria","sudan","ethiopia","turkey","arabia"]},
+  ethiopia:  {n:"Etiyopya",         f:"🇪🇹",c:"#88bb44",al:"allies", tr:35, g:45, p:2, r:1,fac:1,frm:4,mor:78,conn:["egypt","sudan","cafrica","arabia","eafrica","somalia"]},
+  alaska:    {n:"Alaska",           f:"🏔️",c:"#8899aa",al:"allies", tr:35, g:38, p:2, r:1,fac:1,frm:0,mor:82,conn:["canada","ussr"]},
+  greenland: {n:"Grönland",         f:"🧊", c:"#aaccdd",al:"allies", tr:20, g:18, p:1, r:0,fac:0,frm:0,mor:80,conn:["canada","uk","norway","iceland"]},
+  germany:   {n:"Almanya",          f:"🇩🇪",c:"#aaaaaa",al:"axis",   tr:135,g:170,p:10,r:9,fac:7,frm:3,mor:92,conn:["france","poland","czech","austria","netherlands","belgium","denmark","norway","sweden","swiss"]},
+  italy:     {n:"İtalya",           f:"🇮🇹",c:"#88cc77",al:"axis",   tr:78, g:100,p:5, r:4,fac:3,frm:3,mor:70,conn:["france","austria","greece","yugo","libya","swiss","tunisia","albania"]},
+  japan:     {n:"Japonya",          f:"🇯🇵",c:"#cc7777",al:"axis",   tr:125,g:150,p:8, r:7,fac:5,frm:2,mor:88,conn:["china","korea","philippines","manchuria","formosa"]},
+  poland:    {n:"Polonya",          f:"🇵🇱",c:"#dd8888",al:"axis",   tr:65, g:72, p:4, r:3,fac:2,frm:3,mor:65,conn:["germany","ussr","czech","romania","hungary","baltics"]},
+  czech:     {n:"Çekoslovakya",     f:"🇨🇿",c:"#cc6655",al:"axis",   tr:42, g:65, p:4, r:4,fac:3,frm:2,mor:60,conn:["germany","poland","austria","hungary"]},
+  austria:   {n:"Avusturya",        f:"🇦🇹",c:"#dd9988",al:"axis",   tr:35, g:55, p:3, r:3,fac:2,frm:2,mor:62,conn:["germany","italy","czech","hungary","yugo","swiss"]},
+  manchuria: {n:"Mançurya",         f:"🀄", c:"#bb6666",al:"axis",   tr:55, g:65, p:4, r:2,fac:2,frm:2,mor:68,conn:["ussr","china","korea","mongolia","japan"]},
+  libya:     {n:"Libya",            f:"🇱🇾",c:"#aa9955",al:"axis",   tr:48, g:45, p:2, r:1,fac:1,frm:1,mor:65,conn:["italy","egypt","algeria","tunisia","sudan"]},
+  ireland:   {n:"İrlanda",          f:"🇮🇪",c:"#77cc88",al:"neutral",tr:15, g:38, p:2, r:2,fac:1,frm:2,mor:75,conn:["uk"]},
+  norway:    {n:"Norveç",           f:"🇳🇴",c:"#dd7777",al:"neutral",tr:28, g:55, p:3, r:3,fac:2,frm:1,mor:80,conn:["uk","sweden","germany","denmark","finland","greenland"]},
+  sweden:    {n:"İsveç",            f:"🇸🇪",c:"#6699cc",al:"neutral",tr:32, g:65, p:3, r:4,fac:2,frm:2,mor:82,conn:["norway","finland","denmark","germany"]},
+  finland:   {n:"Finlandiya",       f:"🇫🇮",c:"#4477aa",al:"neutral",tr:30, g:50, p:3, r:3,fac:1,frm:2,mor:85,conn:["sweden","norway","ussr"]},
+  denmark:   {n:"Danimarka",        f:"🇩🇰",c:"#cc4455",al:"neutral",tr:20, g:48, p:2, r:3,fac:1,frm:2,mor:78,conn:["norway","sweden","germany","netherlands"]},
+  netherlands:{n:"Hollanda",        f:"🇳🇱",c:"#ee8844",al:"neutral",tr:22, g:60, p:3, r:4,fac:2,frm:2,mor:75,conn:["uk","germany","belgium","denmark"]},
+  belgium:   {n:"Belçika",          f:"🇧🇪",c:"#eebb22",al:"neutral",tr:20, g:52, p:3, r:3,fac:2,frm:2,mor:72,conn:["france","germany","netherlands"]},
+  swiss:     {n:"İsviçre",          f:"🇨🇭",c:"#ee4444",al:"neutral",tr:20, g:75, p:3, r:5,fac:2,frm:2,mor:90,conn:["france","germany","austria","italy"]},
+  spain:     {n:"İspanya",          f:"🇪🇸",c:"#dd9944",al:"neutral",tr:45, g:60, p:3, r:2,fac:2,frm:3,mor:68,conn:["france","portugal","morocco","algeria"]},
+  portugal:  {n:"Portekiz",         f:"🇵🇹",c:"#44aa66",al:"neutral",tr:22, g:42, p:2, r:2,fac:1,frm:2,mor:72,conn:["spain","morocco"]},
+  hungary:   {n:"Macaristan",       f:"🇭🇺",c:"#cc5566",al:"neutral",tr:35, g:50, p:3, r:2,fac:2,frm:2,mor:68,conn:["austria","czech","poland","romania","yugo","bulgaria"]},
+  romania:   {n:"Romanya",          f:"🇷🇴",c:"#7777cc",al:"neutral",tr:40, g:55, p:3, r:2,fac:2,frm:3,mor:65,conn:["poland","ussr","hungary","bulgaria","turkey"]},
+  yugo:      {n:"Yugoslavya",       f:"🇷🇸",c:"#5588bb",al:"neutral",tr:35, g:46, p:3, r:2,fac:1,frm:3,mor:70,conn:["austria","hungary","bulgaria","greece","italy","albania"]},
+  albania:   {n:"Arnavutluk",       f:"🇦🇱",c:"#cc3333",al:"neutral",tr:15, g:25, p:1, r:1,fac:0,frm:1,mor:65,conn:["yugo","greece","italy"]},
+  bulgaria:  {n:"Bulgaristan",      f:"🇧🇬",c:"#55aa77",al:"neutral",tr:30, g:42, p:2, r:2,fac:1,frm:2,mor:68,conn:["romania","yugo","greece","turkey"]},
+  greece:    {n:"Yunanistan",       f:"🇬🇷",c:"#4488bb",al:"neutral",tr:35, g:46, p:2, r:3,fac:1,frm:2,mor:72,conn:["yugo","albania","bulgaria","turkey","italy"]},
+  baltics:   {n:"Baltık Devletleri",f:"🇱🇹",c:"#aabb55",al:"neutral",tr:25, g:38, p:2, r:2,fac:1,frm:2,mor:70,conn:["poland","ussr","finland"]},
+  iceland:   {n:"İzlanda",          f:"🇮🇸",c:"#99bbdd",al:"neutral",tr:10, g:22, p:1, r:1,fac:0,frm:0,mor:80,conn:["uk","greenland","norway"]},
+  turkey:    {n:"Türkiye",          f:"🇹🇷",c:"#dd4444",al:"neutral",tr:55, g:65, p:3, r:2,fac:2,frm:3,mor:75,conn:["bulgaria","greece","ussr","iran","syria","egypt"]},
+  syria:     {n:"Suriye/Irak",      f:"🇸🇾",c:"#88aa55",al:"neutral",tr:28, g:46, p:2, r:1,fac:1,frm:2,mor:65,conn:["turkey","iran","egypt","arabia","iraq"]},
+  iraq:      {n:"Irak",             f:"🇮🇶",c:"#aaaa44",al:"neutral",tr:28, g:46, p:2, r:1,fac:1,frm:2,mor:65,conn:["turkey","iran","syria","arabia"]},
+  iran:      {n:"İran",             f:"🇮🇷",c:"#55aa55",al:"neutral",tr:42, g:60, p:3, r:2,fac:2,frm:3,mor:68,conn:["ussr","turkey","syria","afghan","india","arabia","iraq"]},
+  arabia:    {n:"Arabistan",        f:"🇸🇦",c:"#ddcc77",al:"neutral",tr:28, g:55, p:2, r:1,fac:1,frm:1,mor:65,conn:["syria","iran","ethiopia","egypt","iraq"]},
+  afghan:    {n:"Afganistan",       f:"🇦🇫",c:"#998844",al:"neutral",tr:25, g:32, p:2, r:1,fac:0,frm:2,mor:70,conn:["ussr","iran","india","china"]},
+  mongolia:  {n:"Moğolistan",       f:"🇲🇳",c:"#cc6644",al:"neutral",tr:20, g:28, p:1, r:1,fac:0,frm:1,mor:70,conn:["ussr","china","manchuria"]},
+  korea:     {n:"Kore",             f:"🇰🇷",c:"#dd7788",al:"neutral",tr:25, g:38, p:2, r:2,fac:1,frm:2,mor:60,conn:["china","japan","manchuria","ussr"]},
+  burma:     {n:"Burma",            f:"🇲🇲",c:"#eebb44",al:"neutral",tr:25, g:38, p:2, r:1,fac:1,frm:3,mor:65,conn:["india","china","seasia"]},
+  seasia:    {n:"G.D. Asya",        f:"🇹🇭",c:"#aa5566",al:"neutral",tr:40, g:50, p:2, r:1,fac:1,frm:3,mor:65,conn:["china","india","burma","japan","philippines","indonesia","malaya"]},
+  malaya:    {n:"Malaya",           f:"🇲🇾",c:"#cc4455",al:"neutral",tr:22, g:42, p:2, r:1,fac:1,frm:2,mor:65,conn:["seasia","indonesia"]},
+  philippines:{n:"Filipinler",      f:"🇵🇭",c:"#4488dd",al:"neutral",tr:28, g:42, p:2, r:1,fac:1,frm:2,mor:68,conn:["japan","seasia","indonesia","formosa"]},
+  formosa:   {n:"Formoza",          f:"🀄", c:"#dd8877",al:"neutral",tr:20, g:30, p:1, r:1,fac:0,frm:1,mor:65,conn:["japan","philippines","china"]},
+  indonesia: {n:"Endonezya",        f:"🇮🇩",c:"#cc4444",al:"neutral",tr:35, g:50, p:3, r:1,fac:1,frm:4,mor:65,conn:["seasia","malaya","australia","philippines","papua"]},
+  papua:     {n:"Yeni Gine",        f:"🇵🇬",c:"#bb7744",al:"neutral",tr:18, g:28, p:1, r:0,fac:0,frm:2,mor:62,conn:["australia","indonesia"]},
+  ceylon:    {n:"Seylan",           f:"🇱🇰",c:"#dd6644",al:"neutral",tr:12, g:22, p:1, r:0,fac:0,frm:2,mor:65,conn:["india"]},
+  algeria:   {n:"Cezayir",          f:"🇩🇿",c:"#55aa66",al:"neutral",tr:30, g:42, p:2, r:1,fac:1,frm:2,mor:65,conn:["spain","morocco","libya","tunisia","wafrica"]},
+  tunisia:   {n:"Tunus",            f:"🇹🇳",c:"#ee4444",al:"neutral",tr:22, g:32, p:2, r:1,fac:1,frm:2,mor:65,conn:["algeria","libya","italy"]},
+  morocco:   {n:"Fas",              f:"🇲🇦",c:"#cc4433",al:"neutral",tr:28, g:38, p:2, r:1,fac:1,frm:2,mor:65,conn:["spain","portugal","algeria"]},
+  wafrica:   {n:"Batı Afrika",      f:"🌍", c:"#77bb55",al:"neutral",tr:22, g:32, p:1, r:0,fac:0,frm:3,mor:60,conn:["algeria","cafrica","morocco"]},
+  sudan:     {n:"Sudan",            f:"🇸🇩",c:"#88aa44",al:"neutral",tr:25, g:32, p:1, r:0,fac:0,frm:2,mor:62,conn:["egypt","ethiopia","cafrica","libya","eafrica"]},
+  cafrica:   {n:"Orta Afrika",      f:"🌍", c:"#55aa66",al:"neutral",tr:18, g:28, p:1, r:0,fac:0,frm:2,mor:60,conn:["wafrica","sudan","ethiopia","safrica","angola","eafrica"]},
+  eafrica:   {n:"Doğu Afrika",      f:"🌍", c:"#66bb66",al:"neutral",tr:20, g:30, p:1, r:0,fac:0,frm:2,mor:60,conn:["ethiopia","cafrica","safrica","mozambique","sudan","somalia"]},
+  somalia:   {n:"Somali",           f:"🇸🇴",c:"#aabb88",al:"neutral",tr:18, g:25, p:1, r:0,fac:0,frm:1,mor:60,conn:["ethiopia","eafrica"]},
+  angola:    {n:"Angola",           f:"🇦🇴",c:"#cc3333",al:"neutral",tr:15, g:26, p:1, r:0,fac:0,frm:2,mor:60,conn:["cafrica","safrica"]},
+  mozambique:{n:"Mozambik",         f:"🇲🇿",c:"#55aa88",al:"neutral",tr:15, g:26, p:1, r:0,fac:0,frm:2,mor:60,conn:["eafrica","safrica"]},
+  madagascar:{n:"Madagaskar",       f:"🇲🇬",c:"#ee7744",al:"neutral",tr:12, g:22, p:1, r:0,fac:0,frm:2,mor:62,conn:["mozambique","safrica"]},
+  mexico:    {n:"Meksika",          f:"🇲🇽",c:"#44aa55",al:"neutral",tr:28, g:42, p:2, r:1,fac:1,frm:3,mor:65,conn:["usa","camex","cuba"]},
+  cuba:      {n:"Küba",             f:"🇨🇺",c:"#4488bb",al:"neutral",tr:18, g:28, p:1, r:0,fac:0,frm:2,mor:65,conn:["usa","mexico","camex"]},
+  camex:     {n:"Orta Amerika",     f:"🌎", c:"#55bb44",al:"neutral",tr:15, g:26, p:1, r:0,fac:0,frm:2,mor:62,conn:["mexico","cuba","colombia"]},
+  colombia:  {n:"Kolombiya",        f:"🇨🇴",c:"#eebb22",al:"neutral",tr:22, g:36, p:2, r:1,fac:1,frm:3,mor:65,conn:["camex","brazil","peru"]},
+  argentina: {n:"Arjantin",         f:"🇦🇷",c:"#88aadd",al:"neutral",tr:30, g:50, p:2, r:2,fac:1,frm:4,mor:68,conn:["brazil","chile"]},
+  peru:      {n:"Peru",             f:"🇵🇪",c:"#dd4422",al:"neutral",tr:18, g:30, p:1, r:1,fac:0,frm:2,mor:65,conn:["colombia","brazil","chile"]},
+  chile:     {n:"Şili",             f:"🇨🇱",c:"#cc3344",al:"neutral",tr:18, g:32, p:2, r:1,fac:1,frm:2,mor:68,conn:["peru","argentina"]},
+};
+
+// ISO numeric → territory ID mapping
+const ISO={
+  "840":"usa","124":"canada","826":"uk","833":"uk","832":"uk",
+  "250":"france","254":"france","474":"france","638":"france",
+  "643":"ussr","112":"ussr","233":"ussr","428":"ussr","440":"ussr","498":"ussr",
+  "051":"ussr","031":"ussr","398":"ussr","762":"ussr","795":"ussr","860":"ussr",
+  "356":"india","064":"india","050":"india",
+  "156":"china","158":"china",
+  "036":"australia","554":"nz","710":"safrica",
+  "076":"brazil","032":"argentina","152":"chile","604":"peru",
+  "170":"colombia","858":"argentina",
+  "276":"germany","380":"italy","392":"japan",
+  "616":"poland","203":"czech","703":"czech","040":"austria",
+  "348":"hungary","642":"romania",
+  "191":"yugo","070":"yugo","807":"yugo","705":"yugo","688":"yugo","499":"yugo",
+  "100":"bulgaria","300":"greece","724":"spain","620":"portugal",
+  "056":"belgium","528":"netherlands","208":"denmark",
+  "578":"norway","744":"norway","752":"sweden","246":"finland",
+  "756":"swiss","792":"turkey",
+  "760":"syria","422":"syria","368":"iraq",
+  "364":"iran","682":"arabia","887":"arabia","400":"arabia","512":"arabia",
+  "004":"afghan","496":"mongolia","410":"korea","408":"korea",
+  "104":"burma","764":"seasia","116":"seasia","418":"seasia","458":"malaya",
+  "608":"philippines","360":"indonesia","626":"indonesia",
+  "434":"libya","012":"algeria","788":"tunisia","504":"morocco",
+  "231":"ethiopia","232":"ethiopia","729":"sudan",
+  "706":"somalia","404":"eafrica","800":"eafrica","646":"eafrica","108":"eafrica",
+  "024":"angola","508":"mozambique","450":"madagascar",
+  "508":"mozambique","748":"safrica","516":"safrica","426":"safrica","072":"safrica",
+  "484":"mexico","192":"cuba","332":"cuba","388":"cuba",
+  "320":"camex","340":"camex","188":"camex","222":"camex","558":"camex","591":"camex",
+  "218":"peru","068":"peru","372":"ireland","304":"greenland",
+  "854":"wafrica","288":"wafrica","466":"wafrica","686":"wafrica","694":"wafrica",
+  "270":"wafrica","624":"wafrica","768":"wafrica","566":"wafrica",
+  "180":"cafrica","140":"cafrica","120":"cafrica","266":"cafrica","678":"cafrica",
+  "144":"ceylon","462":"ceylon",
+  "818":"egypt","798":"nz","570":"nz",
+  "540":"papua","598":"papua",
+  "364":"iran","760":"syria",
+  "262":"eafrica","706":"somalia",
+  "858":"argentina","600":"argentina",
+  "076":"brazil",
+  "496":"mongolia",
+  "642":"romania",
+  "191":"yugo",
+  "baltık":"baltics",
+  "233":"baltics","428":"baltics","440":"baltics",
+  "352":"iceland","660":"greenland",
+};
+
+const TECH_TREE=[
+  {id:"army2",n:"Gelişmiş Piyade",   cost:4, req:null,   desc:"Saldırı gücü +25%",       eff:"Kara saldırıları daha etkili"},
+  {id:"army3",n:"Tank Birlikleri",   cost:8, req:"army2",desc:"Saldırı gücü ek +35%",     eff:"Ağır zırhlı birlikler"},
+  {id:"navy2",n:"Denizaltı Filosu",  cost:5, req:null,   desc:"+5💰/tur deniz ablukası",  eff:"Ticaret yollarını keser"},
+  {id:"navy3",n:"Uçak Gemisi",       cost:10,req:"navy2",desc:"Deniz saldırı +45%",        eff:"Uzak mesafe deniz harekâtı"},
+  {id:"air2", n:"Taktik Bombardıman",cost:5, req:null,   desc:"Düşman üretimi -2/tur",    eff:"Düşman fabrikalarını bomba"},
+  {id:"air3", n:"Savaş Uçakları",    cost:9, req:"air2", desc:"Saldırı +15% ek",          eff:"Hava desteğiyle güçlenir"},
+  {id:"ind2", n:"Seri Üretim",       cost:4, req:null,   desc:"Tüm fab. +2🏭/tur",        eff:"Fabrika verimi artar"},
+  {id:"ind3", n:"Ağır Sanayi",       cost:8, req:"ind2", desc:"+4🏭/tur, asker -15💰",    eff:"Sanayi kapasitesi ikiye katlanır"},
+  {id:"med2", n:"Sağlık Servisi",    cost:3, req:null,   desc:"Moral +8, kayıp -%10",     eff:"Savaştaki asker kayıpları azalır"},
+  {id:"inf2", n:"İstihbarat Ağı",    cost:5, req:null,   desc:"Savaş tahmini daha doğru", eff:"Düşman gücünü daha iyi gör"},
+];
+
+// ─── STATE ───────────────────────────────────────────────
+let PTID=null,sel=null,turn=1,phase="player",dead=false,alView=false;
+let logs=[],techs=new Set();
+const INIT={};
+Object.entries(T).forEach(([id,t])=>INIT[id]={al:t.al,tr:t.tr,g:t.g,p:t.p,r:t.r,fac:t.fac,frm:t.frm,mor:t.mor});
+
+function pt(){return T[PTID];}
+function addLog(m){logs.unshift(m);if(logs.length>24)logs.pop();}
+function conn(a,b){const ta=T[a],tb=T[b];return(ta&&ta.conn.includes(b))||(tb&&tb.conn.includes(a));}
+
+// ─── D3 MAP ──────────────────────────────────────────────
+let projection,pathGen,curK=1,isDrag=false,wasDrag=false;
+const pathsByTid={}, centroids={};
+
+function initGame(world){
+  const mw=document.getElementById('mapwrap');
+  const W=mw.offsetWidth, H=mw.offsetHeight;
+  const svg=d3.select('#mapsvg').attr('width',W).attr('height',H);
+  const gMap=svg.append('g'), gMkr=svg.append('g');
+
+  projection=d3.geoNaturalEarth1().scale(W/6.3).translate([W/2,H/2]);
+  pathGen=d3.geoPath().projection(projection);
+
+  gMap.append('path').datum({type:'Sphere'}).attr('class','sphere').attr('d',pathGen);
+  gMap.append('path').datum(d3.geoGraticule()()).attr('class','graticule').attr('d',pathGen);
+
+  const countries=topojson.feature(world,world.objects.countries);
+
+  countries.features.forEach(feat=>{
+    const iso=String(feat.id).padStart(3,'0');
+    const tid=ISO[iso];
+    const t=tid?T[tid]:null;
+
+    const path=gMap.append('path')
+      .datum(feat)
+      .attr('class','land')
+      .attr('fill',t?t.c:'#3a4a3a')
+      .attr('data-tid',tid||'')
+      .attr('d',pathGen);
+
+    if(tid){
+      if(!pathsByTid[tid])pathsByTid[tid]=[];
+      pathsByTid[tid].push(path);
+      try{
+        const c=pathGen.centroid(feat);
+        if(c&&!isNaN(c[0])){
+          if(!centroids[tid])centroids[tid]={x:0,y:0,n:0};
+          centroids[tid].x+=c[0];centroids[tid].y+=c[1];centroids[tid].n++;
+        }
+      }catch(e){}
+    }
+
+    path.on('click',function(event){
+      if(wasDrag)return;
+      if(tid&&T[tid]&&PTID)handleClick(tid);
+    }).on('mousemove',function(event){
+      if(!tid||!T[tid])return;
+      showTooltip(tid,event);
+      if(sel&&T[tid].al!==T[PTID]?.al&&conn(sel,tid))showCombat(sel,tid);
+      else hideCombat();
+    }).on('mouseleave',()=>{
+      document.getElementById('tt').style.display='none';
+      hideCombat();
+    });
+  });
+
+  // Finalize centroids
+  Object.entries(centroids).forEach(([tid,c])=>centroids[tid]={x:c.x/c.n,y:c.y/c.n});
+
+  // Overrides for large/awkward territories
+  const ov={
+    usa:projection([-100,38]),canada:projection([-96,58]),ussr:projection([60,58]),
+    china:projection([104,36]),brazil:projection([-52,-12]),australia:projection([134,-26]),
+    india:projection([78,22]),argentina:projection([-64,-36]),
+    wafrica:projection([2,10]),cafrica:projection([22,2]),safrica:projection([25,-30]),
+    seasia:projection([105,12]),indonesia:projection([118,-4]),
+    manchuria:projection([126,46]),arabia:projection([44,24]),
+    syria:projection([42,34]),alaska:projection([-153,64]),greenland:projection([-42,72]),
+    baltics:projection([25,57]),eafrica:projection([36,-2]),
+    sudan:projection([30,15]),ethiopia:projection([40,9]),
+    cafrica:projection([20,0]),angola:projection([18,-12]),
+    mozambique:projection([35,-18]),somalia:projection([46,6]),
+  };
+  Object.assign(centroids,ov);
+
+  // D3 zoom
+  const zoom=d3.zoom().scaleExtent([0.3,14])
+    .on('zoom',e=>{
+      gMap.attr('transform',e.transform);
+      gMkr.attr('transform',e.transform);
+      curK=e.transform.k;
+      document.getElementById('zlbl').textContent='Zoom: '+Math.round(e.transform.k*100)+'%';
+      renderMarkers(gMkr);
+    });
+  d3.select('#mapsvg').call(zoom);
+
+  window._zoom=zoom; window._svg=d3.select('#mapsvg');
+  window._gMkr=gMkr; window._gMap=gMap;
+
+  function fitMap(){
+    const mwEl=document.getElementById('mapwrap');
+    d3.select('#mapsvg').attr('width',mwEl.offsetWidth).attr('height',mwEl.offsetHeight);
+    projection.scale(mwEl.offsetWidth/6.3).translate([mwEl.offsetWidth/2,mwEl.offsetHeight/2]);
+    gMap.selectAll('path').attr('d',pathGen);
+    renderMarkers(gMkr);
+  }
+  window.addEventListener('resize',fitMap);
+
+  // drag detection
+  d3.select('#mapsvg')
+    .on('mousedown.wd',()=>{isDrag=false;wasDrag=false;})
+    .on('mousemove.wd',e=>{if(e.buttons===1)isDrag=true;})
+    .on('mouseup.wd',()=>{wasDrag=isDrag;setTimeout(()=>{wasDrag=false;isDrag=false;},80);});
+
+  window.doZoom=f=>window._svg.transition().duration(280).call(window._zoom.scaleBy,f);
+  window.resetZoom=()=>window._svg.transition().duration(400).call(window._zoom.transform,d3.zoomIdentity);
+
+  renderMarkers(gMkr);
+  showPicker();
+}
+
+function showTooltip(tid,event){
+  const t=T[tid];
+  const mw=document.getElementById('mapwrap');
+  const alC=t.al==="allies"?"#5aafff":t.al==="axis"?"#ff6a6a":"#aaa";
+  const alN=t.al==="allies"?"🔵 Müttefikler":t.al==="axis"?"🔴 Mihver":"⚪ Tarafsız";
+  const tt=document.getElementById('tt');
+  tt.innerHTML=`<b>${t.f} ${t.n}</b> <span style="color:${alC}">${alN}</span><br>
+🪖 Asker: <b>${t.tr}</b> &nbsp; 💰 Altın: <b>${t.g}</b> &nbsp; 😤 Moral: <b>${t.mor}</b><br>
+🏭 Üretim: <b>${t.p}/tur</b> &nbsp; 🔬 Araştırma: <b>${t.r}/tur</b><br>
+🏗️ Fabrika: <b>${t.fac}</b> (→+${t.fac*3} asker/tur) &nbsp;🌾 Çiftlik: <b>${t.frm}</b>`;
+  tt.style.display='block';
+  const r=mw.getBoundingClientRect();
+  let tx=event.clientX-r.left+14, ty=event.clientY-r.top+14;
+  if(tx+260>r.width)tx-=275;
+  if(ty+100>r.height)ty-=110;
+  tt.style.left=tx+'px';tt.style.top=ty+'px';
+}
+
+// ─── COLORS ──────────────────────────────────────────────
+const ALC={allies:"#4488cc",axis:"#cc4444",neutral:"#556655"};
+
+function renderColors(){
+  if(!window._gMap)return;
+  window._gMap.selectAll('.land').each(function(){
+    const el=d3.select(this);
+    const tid=el.attr('data-tid');
+    if(!tid||!T[tid]){el.attr('fill','#3a4a3a').attr('class','land');return;}
+    const t=T[tid];
+    el.attr('fill',alView?ALC[t.al]:t.c);
+    let cls='land';
+    if(!PTID)return;
+    const pAl=T[PTID].al;
+    if(tid===PTID)cls+=' MINE';
+    else if(tid===sel)cls+=' SEL';
+    else if(sel&&conn(sel,tid)){cls+=t.al===pAl?' MOV':' ATK';}
+    el.attr('class',cls);
+  });
+}
+
+// ─── MARKERS ─────────────────────────────────────────────
+function renderMarkers(gMkr){
+  if(!gMkr)gMkr=window._gMkr;
+  if(!gMkr)return;
+  gMkr.selectAll('*').remove();
+  const sc=Math.max(0.45,Math.min(1.6,1/Math.sqrt(curK)));
+  Object.entries(T).forEach(([tid,t])=>{
+    const c=centroids[tid];
+    if(!c||isNaN(c.x))return;
+    const isP=tid===PTID;
+    const bg=t.al==="allies"?"#0a2848":t.al==="axis"?"#380a0a":"#0a180a";
+    const stroke=tid===sel?"#ffd700":isP?"#fff":t.c;
+    const sw=tid===sel||isP?1.8:0.6;
+    const txt=(isP?"★":"")+"🪖"+t.tr;
+    const w=txt.length*6+8;
+    const ns="http://www.w3.org/2000/svg";
+    const g=gMkr.append("g").attr("transform",`translate(${c.x},${c.y}) scale(${sc})`);
+    const r=document.createElementNS(ns,"rect");
+    r.setAttribute("x",-w/2);r.setAttribute("y",-9);r.setAttribute("width",w);r.setAttribute("height",16);
+    r.setAttribute("rx","3");r.setAttribute("fill",bg);r.setAttribute("stroke",stroke);r.setAttribute("stroke-width",sw);r.setAttribute("opacity","0.93");
+    const tx=document.createElementNS(ns,"text");
+    tx.setAttribute("x","0");tx.setAttribute("y","4");tx.setAttribute("text-anchor","middle");
+    tx.setAttribute("font-size","8");tx.setAttribute("font-family","Courier New");tx.setAttribute("font-weight","bold");
+    tx.setAttribute("fill","#fff");tx.textContent=txt;
+    g.node().appendChild(r);g.node().appendChild(tx);
+  });
+}
+
+// ─── PICKER ──────────────────────────────────────────────
+function buildPicker(){
+  const grid=document.getElementById('cGrid');grid.innerHTML='';
+  Object.entries(T).sort((a,b)=>a[1].n.localeCompare(b[1].n,'tr')).forEach(([tid,t])=>{
+    const ac=t.al==="allies"?"#4488cc":t.al==="axis"?"#cc4444":"#556655";
+    const an=t.al==="allies"?"Müttefikler":t.al==="axis"?"Mihver":"Tarafsız";
+    const d=document.createElement('div');
+    d.className='pc';d.style.borderColor=t.c;
+    d.innerHTML=`<div class="pf">${t.f}</div><div class="pn">${t.n}</div>
+<div class="pa" style="color:${ac}">● ${an}</div>
+<div class="ps">🪖${t.tr} 💰${t.g} 🏭${t.p} 🔬${t.r}<br>😤${t.mor} 🏗️${t.fac}fab 🌾${t.frm}çft</div>`;
+    d.setAttribute('data-n',t.n.toLowerCase());
+    d.onclick=()=>startGame(tid);
+    grid.appendChild(d);
+  });
+}
+function filterCards(){
+  const q=document.getElementById('srch').value.toLowerCase();
+  document.querySelectorAll('.pc').forEach(c=>{c.style.display=c.getAttribute('data-n').includes(q)?'':'none';});
+}
+function showPicker(){document.getElementById('picker').style.display='flex';buildPicker();}
+
+function startGame(tid){
+  PTID=tid;const t=T[tid];
+  document.getElementById('picker').style.display='none';
+  document.getElementById('pflag').textContent=t.f;
+  document.getElementById('plbl').textContent=t.n+' · 1939–1945';
+  sel=null;turn=1;phase='player';dead=false;alView=false;techs=new Set();
+  logs=[`⚔️ ${t.f} ${t.n} ile savaşa giriyorsun! İttifak: ${t.al==="allies"?"🔵 Müttefikler":t.al==="axis"?"🔴 Mihver":"⚪ Tarafsız"}`];
+  Object.entries(INIT).forEach(([id,s])=>Object.assign(T[id],s));
+  document.getElementById('go').classList.remove('show');
+  document.getElementById('abtn').classList.remove('act');
+  document.getElementById('aleg').classList.remove('show');
+  renderColors();renderMarkers();renderAll();
+}
+
+// ─── CLICK ───────────────────────────────────────────────
+function handleClick(tid){
+  if(phase!=='player'||dead||!PTID)return;
+  const t=T[tid],p=T[PTID];
+  if(!sel){
+    if(t.al===p.al){sel=tid;renderColors();renderMarkers();renderSidebar();}
+    return;
+  }
+  if(sel===tid){sel=null;renderColors();renderMarkers();renderSidebar();return;}
+  const src=T[sel];
+  if(!conn(sel,tid)){
+    addLog(`❌ ${src.n}→${t.n}: Ortak sınır yok!`);
+    sel=null;renderColors();renderMarkers();renderSidebar();return;
+  }
+  if(t.al===p.al){
+    if(src.tr<=15){addLog('⚠️ Min 15 asker kalmalı!');sel=null;renderColors();renderMarkers();renderSidebar();return;}
+    const mv=Math.floor(src.tr/2);src.tr-=mv;t.tr+=mv;
+    addLog(`🚶 ${src.n}→${t.n}: ${mv} asker taşındı.`);
+  } else {
+    if(src.tr<=15){addLog('⚠️ Saldırmak için yeterli asker yok!');sel=null;renderColors();renderMarkers();renderSidebar();return;}
+    doAttack(sel,tid,p.al,true);
+  }
+  sel=null;checkWin();renderColors();renderMarkers();renderAll();
+}
+
+// ─── COMBAT ──────────────────────────────────────────────
+function getATKBonus(){
+  let b=1.0;
+  if(techs.has('army2'))b+=0.25;
+  if(techs.has('army3'))b+=0.35;
+  if(techs.has('air3'))b+=0.15;
+  return b;
+}
+function doAttack(sId,tId,atkAl,isPlayer){
+  const s=T[sId],t=T[tId];
+  const bonus=isPlayer?getATKBonus():1.0;
+  const ap=Math.floor(s.tr*0.70*(0.85+Math.random()*0.30)*bonus*(s.mor/100));
+  const dp=Math.floor(t.tr*0.55*(0.85+Math.random()*0.30)*(t.mor/100));
+  const wins=ap>dp;
+  const sLoss=Math.floor(Math.min(s.tr-1,dp*0.38*(techs.has('med2')?0.9:1)));
+  s.tr=Math.max(1,s.tr-sLoss-(wins?Math.floor(s.tr*0.18):0));
+  if(wins){
+    t.al=atkAl;t.tr=Math.max(5,Math.floor(s.tr*0.35));t.mor=Math.max(30,t.mor-20);
+    addLog(`${atkAl==="allies"?"🔵":"🔴"} ${s.n}→${t.n} FETHEDİLDİ! (AP:${ap} DP:${dp})`);
+  } else {
+    t.tr=Math.max(1,t.tr-Math.floor(Math.min(t.tr-1,ap*0.42)));
+    s.mor=Math.max(35,s.mor-6);
+    addLog(`💥 ${s.n}→${t.n} püskürtüldü! (AP:${ap} DP:${dp})`);
+  }
+}
+function showCombat(sId,tId){
+  const s=T[sId],t=T[tId];
+  const bonus=getATKBonus();
+  const apE=Math.floor(s.tr*0.70*1.0*bonus*(s.mor/100));
+  const dpE=Math.floor(t.tr*0.55*1.0*(t.mor/100));
+  const win=Math.round(Math.min(95,Math.max(5,(apE/(apE+dpE))*100)));
+  const cp=document.getElementById('cp');
+  cp.style.display='block';
+  cp.innerHTML=`<div class="cpt">⚔️ SAVAŞ TAHMİNİ</div>
+<div class="cpr"><span>🗡️ Saldırı:</span><span style="color:#88ff88">${apE}</span></div>
+<div class="cpr"><span>🛡️ Savunma:</span><span style="color:#ff8888">${dpE}</span></div>
+<div class="cpr"><span>🎲 Kazanma:</span><span style="color:${win>60?"#88ff88":win>40?"#ffff88":"#ff8888"}">${win}%</span></div>
+<div class="cpbw"><div class="cpb" style="width:${win}%;background:${win>60?"#44aa44":win>40?"#aaaa44":"#aa4444"}"></div></div>
+<div style="font-size:8px;color:#4a3a08;margin-top:3px;">⚠️ ±15% rastgele faktör</div>`;
+}
+function hideCombat(){document.getElementById('cp').style.display='none';}
+
+// ─── ACTIONS ─────────────────────────────────────────────
+function buyTroops(tid){
+  const p=pt();const cost=techs.has('ind3')?17:20;
+  if(p.g<cost){addLog(`⚠️ ${cost}💰 gerekli!`);return;}
+  T[tid].tr+=15;p.g-=cost;
+  addLog(`🪖 ${T[tid].n}'a 15 asker (-${cost}💰)`);
+  renderMarkers();renderSidebar();renderStats();
+}
+function buildFactory(tid){
+  const p=pt();
+  if(p.g<40){addLog('⚠️ 40💰 gerekli!');return;}
+  T[tid].fac=Math.min(10,T[tid].fac+1);T[tid].p=Math.min(20,T[tid].p+3);p.g-=40;
+  addLog(`🏭 ${T[tid].n}'da Fabrika! +3 asker/tur & +3 üretim KALICI [-40💰]`);
+  renderSidebar();renderStats();
+}
+function buildFarm(tid){
+  const p=pt();
+  if(p.g<25){addLog('⚠️ 25💰 gerekli!');return;}
+  T[tid].frm=Math.min(10,T[tid].frm+1);T[tid].g=Math.min(500,T[tid].g+5);p.g-=25;
+  addLog(`🌾 ${T[tid].n}'da Çiftlik! +5💰/tur kalıcı & moral onarımı [-25💰]`);
+  renderSidebar();renderStats();
+}
+
+// ─── TURNS ───────────────────────────────────────────────
+function endTurn(){
+  if(phase!=='player'||dead||!PTID)return;
+  const pAl=T[PTID].al;
+  const prodBonus=techs.has('ind3')?4:techs.has('ind2')?2:0;
+  let tG=0,tP=0,tR=0;
+  Object.entries(T).forEach(([tid,t])=>{
+    if(t.al!==pAl)return;
+    tG+=Math.floor(t.g*0.08)+t.frm*2;
+    tP+=t.p+prodBonus;tR+=t.r;
+    t.tr+=t.fac*3+Math.floor(t.p*0.25);
+    t.mor=Math.min(100,t.mor+3+(t.frm>0?2:0));
+  });
+  const p=pt();p.g+=tG;p.r+=Math.floor(tR*0.08);
+  if(techs.has('navy2'))p.g+=5;
+  addLog(`💰 Tur ${turn}: +${tG}💰 +${tP}🏭 +${Math.floor(tR*0.08)}🔬`);
+  phase='ai';renderStats();
+  setTimeout(aiTurn,900);
+}
+function aiTurn(){
+  const axList=Object.entries(T).filter(([,t])=>t.al==='axis'&&t.tr>18).sort(()=>Math.random()-0.5);
+  let hit=false;
+  for(const [sId,s] of axList){
+    const tgts=s.conn.filter(id=>T[id]&&T[id].al!=='axis'&&s.tr>T[id].tr*0.62).sort((a,b)=>T[a].tr-T[b].tr);
+    if(tgts.length){doAttack(sId,tgts[0],'axis',false);hit=true;break;}
+  }
+  if(!hit)addLog('🤖 Mihver savunma hattını güçlendirdi.');
+  Object.values(T).forEach(t=>{
+    const b=t.al==='axis'?1.1:t.al==='allies'?0.7:0.4;
+    t.tr+=Math.floor((t.fac*2+t.p*0.2)*b);
+    t.mor=Math.min(100,t.mor+1);
+  });
+  turn++;phase='player';checkWin();renderColors();renderMarkers();renderAll();
+}
+function checkWin(){
+  if(Object.values(T).filter(t=>t.al==='axis').length===0)showGO('win');
+  else if(Object.values(T).filter(t=>t.al==='allies').length===0)showGO('lose');
+}
+function showGO(r){
+  dead=true;phase='over';
+  document.getElementById('gem').textContent=r==='win'?'🏆':'💀';
+  const ti=document.getElementById('gti');
+  ti.textContent=r==='win'?'ZAFER!':'YENİLGİ!';
+  ti.style.color=r==='win'?'#ffd700':'#ff4444';
+  ti.style.textShadow='0 0 25px '+(r==='win'?'#ffd700':'#ff0000');
+  document.getElementById('gsu').textContent=r==='win'?'Tüm düşman güçleri yenildi!':'Topraklarınız düştü.';
+  document.getElementById('go').classList.add('show');
+}
+
+// ─── ALLIANCE ────────────────────────────────────────────
+function togAlliance(){
+  alView=!alView;
+  document.getElementById('abtn').classList.toggle('act',alView);
+  document.getElementById('aleg').classList.toggle('show',alView);
+  renderColors();
+}
+
+// ─── TECH ────────────────────────────────────────────────
+function openTech(){
+  if(!PTID)return;
+  const p=pt();
+  const tc=document.getElementById('tcc');
+  tc.innerHTML=`<div style="font-size:10px;color:#8a6820;margin-bottom:10px;">Araştırma Puanı: <b style="color:#cc88ff">${p.r}</b></div>`;
+  TECH_TREE.forEach(tech=>{
+    const done=techs.has(tech.id);
+    const reqMet=!tech.req||techs.has(tech.req);
+    const canAfford=p.r>=tech.cost;
+    const reqName=tech.req?TECH_TREE.find(x=>x.id===tech.req)?.n:'';
+    const d=document.createElement('div');d.className='ti';
+    d.innerHTML=`<div><div class="ti-n">${done?'✅':reqMet?'🔬':'🔒'} ${tech.n} <span style="color:#5a3808;font-size:9px">(${tech.cost}pts)</span></div>
+<div class="ti-d">${tech.desc}</div><div class="ti-e">↪ ${tech.eff}</div>
+${!reqMet?`<div style="font-size:9px;color:#aa5500">🔒 Önce: ${reqName}</div>`:''}
+</div><button class="tbtn" ${done||!reqMet||!canAfford?'disabled':''} onclick="resTech('${tech.id}',${tech.cost})">
+${done?'TAMAM':!reqMet?'KİLİTLİ':!canAfford?'YETERSIZ':'ARAŞTIR'}</button>`;
+    tc.appendChild(d);
+  });
+  document.getElementById('techmod').classList.add('show');
+}
+function resTech(id,cost){
+  const p=pt();if(p.r<cost){addLog('⚠️ Yeterli puan yok!');return;}
+  p.r-=cost;techs.add(id);
+  const tech=TECH_TREE.find(t=>t.id===id);
+  addLog(`🔬 "${tech.n}" araştırıldı! ${tech.eff}`);
+  openTech();renderStats();renderLog();
+}
+
+// ─── RENDER ──────────────────────────────────────────────
+function renderStats(){
+  if(!PTID)return;
+  const p=pt();
+  document.getElementById('s-tur').textContent=turn;
+  document.getElementById('s-gld').textContent=p.g;
+  document.getElementById('s-prd').textContent=p.p+(techs.has('ind3')?'+4':techs.has('ind2')?'+2':'');
+  document.getElementById('s-res').textContent=p.r;
+  const ph=document.getElementById('s-ph');
+  ph.textContent=phase==='player'?'🟢 SENİN TURUN':'🔴 AI OYNUYOR';
+  ph.className='st st-ph'+(phase==='player'?' on':'');
+  document.getElementById('endbtn').disabled=phase!=='player'||dead;
+  document.getElementById('endbtn').textContent=phase==='player'?'⏭ TURU BİTİR':'⏳ BEKLİYOR...';
+  document.getElementById('lga').textContent=Object.values(T).filter(t=>t.al==='allies').length+'🏴';
+  document.getElementById('lgx').textContent=Object.values(T).filter(t=>t.al==='axis').length+'🏴';
+  document.getElementById('lgn').textContent=Object.values(T).filter(t=>t.al==='neutral').length+'🏴';
+}
+function renderSidebar(){
+  const scEl=document.getElementById('sc'),apEl=document.getElementById('ap');
+  if(!sel||!PTID){scEl.innerHTML='<span style="color:#2a2008;font-style:italic;">Bir ülkeye tıkla...</span>';apEl.innerHTML='';return;}
+  const t=T[sel],p=T[PTID];
+  const ac=t.al==="allies"?"#5aafff":t.al==="axis"?"#ff6a6a":"#aaa";
+  const an=t.al==="allies"?"🔵 Müttefikler":t.al==="axis"?"🔴 Mihver":"⚪ Tarafsız";
+  scEl.innerHTML=`<div style="font-size:12px;font-weight:bold;color:#ffd700;margin-bottom:2px;">${t.f} ${t.n}</div>
+<div style="color:${ac};font-size:9px;">${an} &nbsp; 😤 ${t.mor}</div>
+<div style="color:#c8a860;line-height:1.9;font-size:9px;">🪖 ${t.tr} asker &nbsp; 💰 ${t.g} altın<br>
+🏭 ${t.p}/tur &nbsp; 🔬 ${t.r}/tur &nbsp; 🏗️ ${t.fac} fab<br>
+Fab'dan: +${t.fac*3} asker/tur otomatik<br>
+🌾 ${t.frm} çiftlik → +${t.frm*2}💰+${t.frm}mor/tur</div>`;
+  if(t.al===p.al){
+    const cost=techs.has('ind3')?17:20;
+    apEl.innerHTML=`<div style="font-size:8px;color:#8a6820;margin-top:5px;margin-bottom:3px;">EYLEMLER</div>
+<button class="abtn" onclick="buyTroops('${sel}')" ${p.g<cost?'disabled':''}><b>🪖 +15 Asker (${cost}💰)</b><span>Anında takviye</span></button>
+<button class="abtn" onclick="buildFactory('${sel}')" ${p.g<40?'disabled':''}><b>🏭 Fabrika Kur (40💰)</b><span>+3 asker/tur kalıcı & +3 üretim</span></button>
+<button class="abtn" onclick="buildFarm('${sel}')" ${p.g<25?'disabled':''}><b>🌾 Çiftlik Kur (25💰)</b><span>+5💰/tur kalıcı & moral onarımı hızlanır</span></button>`;
+  } else apEl.innerHTML='';
+}
+function renderLog(){document.getElementById('logbox').innerHTML=logs.map((l,i)=>`<div class="le ${i===0?'n':'o'}">${l}</div>`).join('');}
+function renderAll(){renderStats();renderSidebar();renderLog();}
+</script>
+</body>
+</html>
